@@ -300,7 +300,8 @@ class $modify(XyzKeys, CCKeyboardDispatcher) {
     bool dispatchKeyboardMSG(enumKeyCodes key, bool down, bool repeat, double ts) {
         if (down && !repeat) {
             if (key == KEY_F6) { XyzMenu::toggle(); return true; }
-            if (key == KEY_Period && PlayLayer::get()) { stepOnce(); return true; }
+            // F7 performs a single-step action (KEY_Period is not defined by the current Geode key enum).
+            if (key == KEY_F7 && PlayLayer::get()) { stepOnce(); return true; }
         }
         return CCKeyboardDispatcher::dispatchKeyboardMSG(key, down, repeat, ts);
     }
