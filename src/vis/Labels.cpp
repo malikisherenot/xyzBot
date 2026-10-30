@@ -175,10 +175,10 @@ void updateLabels(PlayLayer* pl) {
             float sp = 8.f, inner = 4.f * l.c.scale;
             CCPoint pos, anc;
             switch (a) {
-                case 0: pos = {sp, size.height - sp - h[0]}; anc = {0, 1}; break;
-                case 1: pos = {size.width - sp, size.height - sp - h[1]}; anc = {1, 1}; break;
-                case 2: pos = {10.f, h[2] + sp}; anc = {0, 0}; break;
-                default: pos = {size.width - sp, h[3] + sp}; anc = {1, 0}; break;
+                case 0: pos = ccp(sp, size.height - sp - h[0]); anc = ccp(0, 1); break;
+                case 1: pos = ccp(size.width - sp, size.height - sp - h[1]); anc = ccp(1, 1); break;
+                case 2: pos = ccp(10.f, h[2] + sp); anc = ccp(0, 0); break;
+                default: pos = ccp(size.width - sp, h[3] + sp); anc = ccp(1, 0); break;
             }
             n->setPosition(pos); n->setAnchorPoint(anc);
             h[a] += n->getScaledContentSize().height + inner;
