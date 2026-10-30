@@ -58,32 +58,4 @@ std::vector<std::string> listMacros() {
     return out;
 }
 
-template <class T> static void w(std::ofstream& f, T v) { f.write(reinterpret_cast<char const*>(&v), sizeof(T)); }
-template <class T> static bool r(std::ifstream& f, T& v) { return (bool)f.read(reinterpret_cast<char*>(&v), sizeof(T)); }
-
-bool saveMacro(Macro const& m, std::string const& name) {
-    std::ofstream f(macroDir() / (name + ".xyz"), std::ios::binary);
-    if (!f) return false;
-    f.write("XYZM", 4); w<uint32_t>(f, 1);
-    w(f, m.tps); w(f, m.ticks); w(f, m.seed); w(f, m.levelId);
-    w<uint32_t>(f, m.inputs.size());
-    for (auto& i : m.inputs) { w(f, i.tick); w(f, i.button); w<uint8_t>(f, i.down | (i.p2 << 1)); }
-    w<uint32_t>(f, m.fixes.size());
-    for (auto& x : m.fixes) { w(f, x.tick); w<uint8_t>(f, x.p2); w(f, x.x); w(f, x.y); w(f, x.rot); w(f, x.yv); }
-    return (bool)f;
-}
-
-bool loadMacro(Macro& m, std::string const& name) {
-    std::ifstream f(macroDir() / (name + ".xyz"), std::ios::binary);
-    char magic[4]; uint32_t ver = 0, n = 0;
-    if (!f || !f.read(magic, 4) || std::string(magic, 4) != "XYZM" || !r(f, ver) || ver != 1) return false;
-    m = Macro{};
-    if (!r(f, m.tps) || !r(f, m.ticks) || !r(f, m.seed) || !r(f, m.levelId) || !r(f, n)) return false;
-    m.inputs.resize(n);
-    for (auto& i : m.inputs) { uint8_t fl; if (!r(f, i.tick) || !r(f, i.button) || !r(f, fl)) return false; i.down = fl & 1; i.p2 = fl & 2; }
-    if (!r(f, n)) return false;
-    m.fixes.resize(n);
-    for (auto& x : m.fixes) { uint8_t p; if (!r(f, x.tick) || !r(f, p) || !r(f, x.x) || !r(f, x.y) || !r(f, x.rot) || !r(f, x.yv)) return false; x.p2 = p; }
-    return true;
-}
 }
