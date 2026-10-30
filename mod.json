@@ -1,0 +1,17 @@
+{
+  "geode": "5.11.2",
+  "gd": { "win": "2.2081", "android": "2.2081", "mac": "2.2081", "ios": "2.2081" },
+  "version": "v1.1.0",
+  "id": "itzmalikhere.xyzbot",
+  "name": "xyzBot",
+  "developer": "itzmalikhere",
+  "description": "Maximalism bot: accurate tick replay, xdBot-style TPS, hitboxes and trajectory.",
+  "tags": ["cheat", "gameplay", "utility"],
+  "resources": { "files": ["resources/*.png"] },
+  "settings": {
+    "floating-button": { "type": "bool", "name": "Floating Button", "default": true, "description": "Draggable button that opens the menu." }
+  },
+  "dependencies": [
+    { "id": "geode.node-ids", "version": ">=1.0.0", "importance": "required" }
+  ]
+}
