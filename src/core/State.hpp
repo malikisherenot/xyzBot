@@ -17,6 +17,7 @@ struct Macro {
     uint32_t ticks = 0;
     uint64_t seed = 0;
     int64_t levelId = 0;
+    float startX = 0.f;
 };
 
 struct Cfg {
@@ -49,6 +50,7 @@ struct Cfg {
     bool ssbFix = false, ssbInvert = false;
     bool legacyShip = false;
     int legacyShipPct = 6;
+    bool btnInLevel = true;
     int themeIdx = 0;
     int accR = 0, accG = 217, accB = 153;
     int tintR = 13, tintG = 20, tintB = 28;
@@ -78,6 +80,11 @@ struct Rt {
     Ac ac[2];
     std::vector<double> cpsT[2];
     int maxCps[2] = {0, 0};
+    float startX = 0.f;
+    bool edWasDead = false;
+    float edLastX = 0.f;
+    bool seekPending = false;
+    std::array<bool, 6> seekHeld{};
     size_t cpCount = 0;
     double autosaveAcc = 0.0;
     bool ssbActive = false;
@@ -85,6 +92,9 @@ struct Rt {
     int ssbEvents = 0;
 };
 
+GJBaseGameLayer* activeLayer();
+bool isActive(GJBaseGameLayer* gl);
+void onEditorPlaytest(bool started);
 float ssbFactor();
 void computeWant();
 void cpsPush(bool p2);

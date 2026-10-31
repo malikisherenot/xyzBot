@@ -9,14 +9,14 @@ using namespace geode::prelude;
 
 namespace xyz {
 void stepOnce() { rt().stepPending++; }
-static bool pdActive(PlayLayer* pl) {
+static bool pdActive(GJBaseGameLayer* pl) {
     auto& c = cfg();
     return c.preventDeath && !c.noclip && rt().mode != Mode::Play && pl->m_player1 && !pl->m_player1->m_isDead;
 }
 }
 
 class $modify(XyzTpsGL, GJBaseGameLayer) {
-    bool tickOnce(PlayLayer* pl, double step) {
+    bool tickOnce(GJBaseGameLayer* pl, double step) {
         using namespace xyz;
         auto& r = rt(); auto& c = cfg();
         if (pdActive(pl)) {
@@ -38,7 +38,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
     void update(float dt) {
         using namespace xyz;
         auto& c = cfg(); auto& r = rt();
-        auto pl = PlayLayer::get();
+        auto pl = xyz::activeLayer();
         bool mine = pl && (GJBaseGameLayer*)pl == this && !r.simulating;
         if (!mine) { GJBaseGameLayer::update(dt); return; }
 
@@ -86,7 +86,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
 
     double getModifiedDelta(float dt) {
         using namespace xyz;
-        auto pl = PlayLayer::get();
+        auto pl = xyz::activeLayer();
         double tps = curTps();
         if ((tps == 240.0 && !(pl && pdActive(pl))) || !pl || (GJBaseGameLayer*)pl != this || rt().simulating)
             return GJBaseGameLayer::getModifiedDelta(dt);
@@ -106,7 +106,7 @@ class $modify(XyzSched, CCScheduler) {
         CCScheduler::update(c.speed ? dt * c.speedVal : dt);
         static float lastPitch = 1.f;
         float want = (c.speed && c.speedAudio) ? c.speedVal : 1.f;
-        if (c.ssbFix && xyz::rt().ssbActive && PlayLayer::get()) {
+        if (c.ssbFix && xyz::rt().ssbActive && xyz::activeLayer()) {
             float f = std::clamp(xyz::rt().ssbLast, 0.25f, 4.f);
             want *= c.ssbInvert ? 1.f / f : f;
         }

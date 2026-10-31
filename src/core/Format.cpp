@@ -78,6 +78,7 @@ void push(Hist& h, int c, int32_t v) { h.a[c][1] = h.a[c][0]; h.a[c][0] = v; }
 Buf encode(Macro const& m) {
     Buf b;
     putV(b, m.tps); putV(b, m.ticks); putV(b, m.seed); putV(b, zz(m.levelId));
+    putV(b, (uint32_t)bitsOf(m.startX));
     putV(b, m.inputs.size()); putV(b, m.fixes.size());
     uint32_t last = 0;
     for (auto& i : m.inputs) { putV(b, i.tick - last); last = i.tick; }
@@ -96,10 +97,11 @@ Buf encode(Macro const& m) {
     return b;
 }
 
-bool decode(Buf const& raw, Macro& m) {
+bool decode(Buf const& raw, Macro& m, bool v3) {
     Rd r{raw.data(), raw.data() + raw.size()};
     m = Macro{};
     m.tps = (uint32_t)r.v(); m.ticks = (uint32_t)r.v(); m.seed = r.v(); m.levelId = unzz(r.v());
+    if (v3) m.startX = floatOf((int32_t)(uint32_t)r.v());
     uint64_t ni = r.v(), nf = r.v();
     if (!r.ok || ni > raw.size() || nf > raw.size()) return false;
     m.inputs.resize(ni); m.fixes.resize(nf);
@@ -139,7 +141,7 @@ bool loadLegacy(std::ifstream& f, Macro& m) {
 bool saveMacro(Macro const& m, std::string const& name) {
     Buf raw = encode(m);
     Buf packed = lz(raw);
-    Buf out = {'X', 'Y', 'Z', '2'};
+    Buf out = {'X', 'Y', 'Z', '3'};
     putV(out, raw.size());
     out.insert(out.end(), packed.begin(), packed.end());
     std::ofstream f(macroDir() / (name + ".xyz"), std::ios::binary);
@@ -153,13 +155,14 @@ bool loadMacro(Macro& m, std::string const& name) {
     char magic[4];
     if (!f || !f.read(magic, 4)) return false;
     if (std::memcmp(magic, "XYZM", 4) == 0) return loadLegacy(f, m);
-    if (std::memcmp(magic, "XYZ2", 4) != 0) return false;
+    bool v3 = std::memcmp(magic, "XYZ3", 4) == 0;
+    if (!v3 && std::memcmp(magic, "XYZ2", 4) != 0) return false;
     Buf rest((std::istreambuf_iterator<char>(f)), {});
     Rd r{rest.data(), rest.data() + rest.size()};
     uint64_t rawSize = r.v();
     if (!r.ok || rawSize > (1ull << 30)) return false;
     Buf raw;
     if (!unlz(r.p, r.e, (size_t)rawSize, raw)) return false;
-    return decode(raw, m);
+    return decode(raw, m, v3);
 }
 }

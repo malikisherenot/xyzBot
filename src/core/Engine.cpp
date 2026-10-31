@@ -3,6 +3,8 @@
 #include "../vis/Vis.hpp"
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
+#include <Geode/modify/LevelEditorLayer.hpp>
+#include <Geode/modify/EditorUI.hpp>
 #include <Geode/binding/CheckpointObject.hpp>
 #include <Geode/binding/GameToolbox.hpp>
 #include <unordered_map>
@@ -13,8 +15,16 @@ namespace xyz {
 static size_t hi(int button, bool p2) { return (p2 ? 3 : 0) + std::clamp(button, 1, 3) - 1; }
 static bool takeover() { auto& c = cfg(); return c.maintainGravity || c.mirror || c.acOn[0] || c.acOn[1]; }
 
+// The layer the bot drives: the level, or the editor while it is playtesting.
+GJBaseGameLayer* activeLayer() {
+    if (auto pl = PlayLayer::get()) return pl;
+    if (auto ed = LevelEditorLayer::get(); ed && ed->m_playbackMode == PlaybackMode::Playing) return ed;
+    return nullptr;
+}
+bool isActive(GJBaseGameLayer* gl) { return gl && gl == activeLayer(); }
+
 void cpsPush(bool p2) {
-    auto pl = PlayLayer::get();
+    auto pl = activeLayer();
     if (!pl) return;
     auto& r = rt();
     r.cpsT[p2].push_back(pl->m_gameState.m_levelTime);
@@ -22,7 +32,7 @@ void cpsPush(bool p2) {
 }
 
 int cpsNow(int p) {
-    auto pl = PlayLayer::get();
+    auto pl = activeLayer();
     auto& v = rt().cpsT[p];
     if (!pl) return 0;
     double t = pl->m_gameState.m_levelTime;
@@ -31,7 +41,7 @@ int cpsNow(int p) {
 }
 
 float ssbFactor() {
-    auto pl = PlayLayer::get();
+    auto pl = activeLayer();
     if (!pl || !pl->m_player1) return 1.f;
     static float const speeds[5] = {251.1601f, 311.5801f, 387.4201f, 468.0002f, 576.0002f};
     float s = pl->m_player1->m_playerSpeed;
@@ -53,7 +63,7 @@ void computeWant() {
     bool d[2] = {r.userHeld[0] || r.acHeld[0], r.userHeld[1] || r.acHeld[1]};
     if (c.mirror) { bool a = d[0] || d[1]; d[0] = a; d[1] = a != c.mirrorInv; }
     if (c.maintainGravity) {
-        if (auto pl = PlayLayer::get()) {
+        if (auto pl = activeLayer()) {
             if (pl->m_player1) d[0] = d[0] != pl->m_player1->m_isUpsideDown;
             if (pl->m_gameState.m_isDualMode && pl->m_player2) d[1] = d[1] != pl->m_player2->m_isUpsideDown;
         }
@@ -94,24 +104,59 @@ static void drive(GJBaseGameLayer* gl) {
         if (r.want[p] != r.gameHeld[p]) press(gl, r.want[p], p);
 }
 
+// Playing a macro recorded at an earlier start from a later StartPos: jump the macro forward to the
+// tick where its player reached this start, using the recorded frame fixes.
+static bool alignPlayback() {
+    auto& r = rt(); auto& m = r.play;
+    float cur = r.startX, rec = m.startX;
+    if (std::abs(cur - rec) <= 1.f) return true;
+    if (cur < rec) {
+        Notification::create("Macro was recorded from a later StartPos", NotificationIcon::Error)->show();
+        return false;
+    }
+    size_t idx = m.fixes.size();
+    for (size_t i = 0; i < m.fixes.size(); ++i)
+        if (!m.fixes[i].p2 && m.fixes[i].x >= cur - 0.5f) { idx = i; break; }
+    if (idx == m.fixes.size()) {
+        Notification::create("Cannot align macro to this StartPos (needs frame fixes)", NotificationIcon::Error)->show();
+        return false;
+    }
+    uint32_t t = m.fixes[idx].tick + 1;
+    r.tick = t;
+    r.nextIn = 0; r.nextFix = 0;
+    r.seekHeld.fill(false);
+    while (r.nextIn < m.inputs.size() && m.inputs[r.nextIn].tick < t) {
+        auto& i = m.inputs[r.nextIn++];
+        r.seekHeld[hi(i.button, i.p2)] = i.down;
+    }
+    while (r.nextFix < m.fixes.size() && m.fixes[r.nextFix].tick < t) r.nextFix++;
+    r.seekPending = true;
+    return true;
+}
+
 static void rewind() {
     auto& r = rt();
     r.tick = 0; r.nextIn = 0; r.nextFix = 0; r.held.fill(false); r.leftover = 0;
     r.gameHeld = {false, false}; r.acHeld = {false, false}; r.ac[0] = Ac{}; r.ac[1] = Ac{};
     r.cpsT[0].clear(); r.cpsT[1].clear(); r.maxCps[0] = r.maxCps[1] = 0;
-    r.frozen = false; r.autosaveAcc = 0.0;
+    r.frozen = false; r.autosaveAcc = 0.0; r.seekPending = false;
     r.ssbActive = false; r.ssbLast = 1.f; r.ssbEvents = 0;
+    auto gl = activeLayer();
+    r.startX = (gl && gl->m_player1) ? gl->m_player1->getPositionX() : 0.f;
+    r.edWasDead = false; r.edLastX = r.startX;
     if (r.mode == Mode::Record) {
         r.rec = Macro{};
         r.rec.tps = (uint32_t)curTps();
         r.rec.levelId = r.levelId;
+        r.rec.startX = r.startX;
         r.rec.seed = GameToolbox::getfast_srand();
     } else if (r.mode == Mode::Play) {
         GameToolbox::fast_srand(r.play.seed);
+        if (!alignPlayback()) stopAll(false);
     }
 }
 
-static void applyFix(PlayLayer* pl, Fix const& f) {
+static void applyFix(GJBaseGameLayer* pl, Fix const& f) {
     auto p = f.p2 ? pl->m_player2 : pl->m_player1;
     if (!p || (f.p2 && !pl->m_gameState.m_isDualMode)) return;
     p->setPosition({f.x, f.y});
@@ -123,6 +168,13 @@ static void feed(GJBaseGameLayer* gl) {
     auto& r = rt();
     if (r.mode != Mode::Play) return;
     auto& m = r.play;
+    if (r.seekPending) {
+        r.seekPending = false;
+        r.feeding = true;
+        for (size_t i = 0; i < 6; ++i)
+            if (r.seekHeld[i]) { gl->handleButton(true, (int)(i % 3 + 1), i < 3); r.held[i] = true; }
+        r.feeding = false;
+    }
     while (r.nextIn < m.inputs.size() && m.inputs[r.nextIn].tick <= r.tick) {
         auto& i = m.inputs[r.nextIn++];
         r.feeding = true;
@@ -133,7 +185,7 @@ static void feed(GJBaseGameLayer* gl) {
     }
 }
 
-static void closeTick(PlayLayer* pl) {
+static void closeTick(GJBaseGameLayer* pl) {
     auto& r = rt();
     if (r.mode == Mode::Play) {
         while (r.nextFix < r.play.fixes.size() && r.play.fixes[r.nextFix].tick <= r.tick)
@@ -170,11 +222,22 @@ static void closeTick(PlayLayer* pl) {
     if (cfg().trail) vis::sampleTrail(pl);
 }
 
+// The editor has no reset hook we can rely on: detect a respawn from the player's state.
+static void editorRespawnCheck(GJBaseGameLayer* gl) {
+    auto& r = rt();
+    auto p = gl->m_player1;
+    if (!p) return;
+    float x = p->getPositionX();
+    bool dead = p->m_isDead;
+    if ((r.edWasDead && !dead) || (r.tick > 4 && x < r.edLastX - 2.f)) rewind();
+    r.edWasDead = dead;
+    r.edLastX = x;
+}
+
 class $modify(XyzGL, GJBaseGameLayer) {
     void handleButton(bool down, int button, bool p1) {
         auto& r = rt(); auto& c = cfg();
-        auto pl = PlayLayer::get();
-        if (!pl || (GJBaseGameLayer*)pl != this || r.simulating) { GJBaseGameLayer::handleButton(down, button, p1); return; }
+        if (!isActive(this) || r.simulating) { GJBaseGameLayer::handleButton(down, button, p1); return; }
         bool p2 = !p1;
         if (r.mode == Mode::Play && !r.feeding && !r.resetting && c.blockInputs) return;
         bool ext = !r.internal && !r.feeding && !r.resetting;
@@ -192,14 +255,16 @@ class $modify(XyzGL, GJBaseGameLayer) {
     }
 
     void processCommands(float dt, bool half, bool last) {
-        auto pl = PlayLayer::get();
-        if (!pl || (GJBaseGameLayer*)pl != this || rt().simulating) {
+        if (!isActive(this) || rt().simulating) {
             GJBaseGameLayer::processCommands(dt, half, last);
             return;
         }
-        if (!half) { drive(this); feed(this); }
+        if (!half) {
+            if (!PlayLayer::get()) editorRespawnCheck(this);
+            drive(this); feed(this);
+        }
         GJBaseGameLayer::processCommands(dt, half, last);
-        if (!half) closeTick(pl);
+        if (!half) closeTick(this);
     }
 };
 
@@ -299,22 +364,67 @@ class $modify(XyzPL, PlayLayer) {
     }
 };
 
+// ---- editor playtest ----
+class $modify(XyzEditorLayer, LevelEditorLayer) {
+    bool init(GJGameLevel* level, bool p1) {
+        if (!LevelEditorLayer::init(level, p1)) return false;
+        vis::attach(this);
+        return true;
+    }
+
+    void destroyPlayer(PlayerObject* p, GameObject* o) {
+        auto& r = rt();
+        if (r.simulating) { r.simDead = true; return; }
+        if (cfg().noclip) return;
+        LevelEditorLayer::destroyPlayer(p, o);
+    }
+};
+
+class $modify(XyzEditorUI, EditorUI) {
+    void onPlaytest(CCObject* sender) {
+        bool starting = m_editorLayer && m_editorLayer->m_playbackMode == PlaybackMode::Not;
+        EditorUI::onPlaytest(sender);
+        onEditorPlaytest(starting);
+    }
+};
+
+void onEditorPlaytest(bool started) {
+    auto& r = rt();
+    if (started) {
+        rewind();
+        return;
+    }
+    if (r.mode != Mode::Off) stopAll(r.mode == Mode::Record);
+    vis::hideLabels();
+}
+
 bool startRecord() {
-    auto pl = PlayLayer::get(); auto& r = rt();
-    if (!pl) return false;
-    r.mode = Mode::Record;
-    pl->resetLevelFromStart();
-    return true;
+    auto& r = rt();
+    if (auto pl = PlayLayer::get()) {
+        r.mode = Mode::Record;
+        pl->resetLevelFromStart();
+        return true;
+    }
+    if (LevelEditorLayer::get()) {
+        r.mode = Mode::Record;
+        r.rec = Macro{};
+        Notification::create(activeLayer() ? "Restart the playtest to begin recording" : "Recording armed: start the playtest", NotificationIcon::Info)->show();
+        return true;
+    }
+    return false;
 }
 
 bool startPlay(std::string const& name) {
-    auto pl = PlayLayer::get(); auto& r = rt();
-    if (!pl || !loadMacro(r.play, name)) return false;
-    if (!cfg().ignoreLevel && r.play.levelId != 0 && r.play.levelId != pl->m_level->m_levelID.value()) return false;
+    auto& r = rt();
+    auto pl = PlayLayer::get();
+    auto ed = LevelEditorLayer::get();
+    if ((!pl && !ed) || !loadMacro(r.play, name)) return false;
+    if (pl && !cfg().ignoreLevel && r.play.levelId != 0 && r.play.levelId != pl->m_level->m_levelID.value()) return false;
     r.prevTpsVal = cfg().tpsVal; r.savedTps = cfg().tps;
     cfg().tps = true; cfg().tpsVal = (float)r.play.tps;
     r.mode = Mode::Play;
-    pl->resetLevelFromStart();
+    if (pl) pl->resetLevelFromStart();
+    else Notification::create(activeLayer() ? "Restart the playtest to begin playback" : "Playback armed: start the playtest", NotificationIcon::Info)->show();
     return true;
 }
 
