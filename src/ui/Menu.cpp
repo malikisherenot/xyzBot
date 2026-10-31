@@ -40,8 +40,8 @@ static CCMenuItemSpriteExtra* makeSwitch(bool on, std::function<void(bool)> cb) 
     auto draw = [d, st] {
         d->clear();
         bool v = *st;
-        rrect(d, {0, 2}, {42, 18}, 9, v ? ccc4f(0.f, 0.7f, 0.5f, 0.95f) : ccc4f(1, 1, 1, 0.14f), 1.f, v ? ccc4f(0.45f, 1.f, 0.8f, 0.9f) : ccc4f(1, 1, 1, 0.3f));
-        d->drawDot({v ? 32.f : 10.f, 11.f}, 7.f, v ? ccc4f(1, 1, 1, 1) : ccc4f(1, 1, 1, 0.75f));
+        rrect(d, {0, 2}, {42, 18}, 9, v ? ccc4f(0.f, 0.7f, 0.5f, 0.95f) : ccc4f(0.03f, 0.04f, 0.06f, 0.97f), 1.4f, v ? ccc4f(0.45f, 1.f, 0.8f, 0.95f) : ccc4f(1, 1, 1, 0.55f));
+        d->drawDot({v ? 32.f : 10.f, 11.f}, 7.f, v ? ccc4f(1, 1, 1, 1) : ccc4f(0.6f, 0.64f, 0.7f, 1.f));
     };
     draw();
     return CCMenuItemExt::createSpriteExtra(node, [st, draw, cb](auto) { *st = !*st; draw(); cb(*st); });
@@ -71,6 +71,21 @@ static CCMenuItemSpriteExtra* makeRound(char const* glyph, std::function<void()>
     auto l = CCLabelBMFont::create(glyph, "bigFont.fnt");
     l->setScale(.42f); l->setPosition({10, 10});
     node->addChild(l);
+    return CCMenuItemExt::createSpriteExtra(node, [cb](auto) { cb(); });
+}
+
+static CCMenuItemSpriteExtra* makeGear(std::function<void()> cb) {
+    auto node = CCNode::create();
+    node->setContentSize({22, 22});
+    auto d = CCDrawNode::create();
+    d->drawDot({11, 11}, 11, ccc4f(1, 1, 1, 0.10f));
+    for (int i = 0; i < 8; ++i) {
+        float a = i * 3.14159265f / 4.f;
+        d->drawDot({11 + std::cos(a) * 7.4f, 11 + std::sin(a) * 7.4f}, 2.3f, ccc4f(0.85f, 0.95f, 1.f, 0.95f));
+    }
+    d->drawDot({11, 11}, 6.2f, ccc4f(0.85f, 0.95f, 1.f, 0.95f));
+    d->drawDot({11, 11}, 2.6f, ccc4f(0.06f, 0.09f, 0.12f, 1.f));
+    node->addChild(d);
     return CCMenuItemExt::createSpriteExtra(node, [cb](auto) { cb(); });
 }
 
@@ -168,7 +183,7 @@ void XyzMenu::buildSide() {
         l->setScale(.4f); l->setPosition({(SW - 12) / 2, 13});
         if (!sel) l->setOpacity(200);
         node->addChild(l);
-        auto b = CCMenuItemExt::createSpriteExtra(node, [this, i](auto) { m_tab = i; m_sel = -1; this->buildSide(); this->rebuild(); });
+        auto b = CCMenuItemExt::createSpriteExtra(node, [this, i](auto) { m_tab = i; m_sel = -1; m_sub.clear(); this->buildSide(); this->rebuild(); });
         b->setPosition({10 + SW / 2, y - 13 - i * 31.f + 0.f});
         menu->addChild(b);
     }
@@ -179,6 +194,7 @@ struct Row {
     enum K { Section, Toggle, Num, Pills, Text, Custom } k = Text;
     std::string label;
     bool on = false;
+    std::string gear;
     std::function<void(bool)> setb;
     std::function<std::string()> get;
     std::function<void(int)> step;
@@ -194,13 +210,67 @@ void XyzMenu::rebuild() {
     std::vector<Row> rows;
 
     auto sec = [&](std::string t) { Row x; x.k = Row::Section; x.label = std::move(t); rows.push_back(std::move(x)); };
-    auto tog = [&](std::string t, bool v, std::function<void(bool)> f) { Row x; x.k = Row::Toggle; x.label = std::move(t); x.on = v; x.setb = std::move(f); rows.push_back(std::move(x)); };
+    auto tog = [&](std::string t, bool v, std::function<void(bool)> f, std::string gear = "") { Row x; x.k = Row::Toggle; x.label = std::move(t); x.on = v; x.setb = std::move(f); x.gear = std::move(gear); rows.push_back(std::move(x)); };
     auto num = [&](std::string t, std::function<std::string()> g, std::function<void(int)> s) { Row x; x.k = Row::Num; x.label = std::move(t); x.get = std::move(g); x.step = std::move(s); rows.push_back(std::move(x)); };
     auto txt = [&](std::string t) { Row x; x.k = Row::Text; x.label = std::move(t); rows.push_back(std::move(x)); };
     auto pills = [&](std::vector<std::pair<std::string, std::function<void()>>> p) { Row x; x.k = Row::Pills; x.pills = std::move(p); rows.push_back(std::move(x)); };
     auto custom = [&](std::function<void(CCMenu*, float, float)> f) { Row x; x.k = Row::Custom; x.custom = std::move(f); rows.push_back(std::move(x)); };
 
-    switch (m_tab) {
+    auto back = [&] { pills({{"< Back", [this] { m_sub.clear(); this->rebuild(); }}}); };
+    auto sub = m_sub;
+
+    if (!sub.empty()) {
+        back();
+        if (sub == "tps") {
+            sec("TPS SETTINGS");
+            num("TPS", [] { return fmt::format("{}", (int)cfg().tpsVal); }, [](int d) {
+                auto& v = cfg().tpsVal; float s = v >= 10000 ? 5000 : v >= 1000 ? 500 : v >= 240 ? 60 : 10;
+                v = std::clamp(v + d * s, 1.f, 1000000.f); saveCfg(); });
+            num("Frame Budget (ms)", [] { return fmt::format("{}", (int)cfg().budgetMs); }, [](int d) { cfg().budgetMs = std::clamp(cfg().budgetMs + d, 1.f, 100.f); saveCfg(); });
+        } else if (sub == "speed") {
+            sec("SPEEDHACK SETTINGS");
+            num("Speed", [] { return fmt::format("{:.2f}", cfg().speedVal); }, [](int d) { cfg().speedVal = std::clamp(cfg().speedVal + d * 0.1f, 0.05f, 100.f); saveCfg(); });
+            tog("Speedhack Audio", c.speedAudio, [](bool v) { cfg().speedAudio = v; saveCfg(); });
+        } else if (sub == "ssb") {
+            sec("SSB FIX SETTINGS");
+            tog("Invert Correction", c.ssbInvert, [](bool v) { cfg().ssbInvert = v; saveCfg(); });
+        } else if (sub == "legship") {
+            sec("LEGACY SHIP SETTINGS");
+            num("Extra Weight (%)", [] { return fmt::format("{}", cfg().legacyShipPct); }, [](int d) { cfg().legacyShipPct = std::clamp(cfg().legacyShipPct + d, 0, 100); saveCfg(); });
+        } else if (sub == "hitbox") {
+            sec("HITBOX SETTINGS");
+            tog("Player", c.hbPlayer, [](bool v) { cfg().hbPlayer = v; saveCfg(); });
+            tog("Solid / Hazard", c.hbSolid && c.hbHazard, [](bool v) { cfg().hbSolid = cfg().hbHazard = v; saveCfg(); });
+            tog("Special / Rotated", c.hbSpecial && c.hbRotated, [](bool v) { cfg().hbSpecial = cfg().hbRotated = v; saveCfg(); });
+        } else if (sub == "trail") {
+            sec("TRAIL SETTINGS");
+            num("Trail Length", [] { return fmt::format("{}", cfg().trailLen); }, [](int d) { cfg().trailLen = std::clamp(cfg().trailLen + d * 50, 10, 2000); saveCfg(); });
+        } else if (sub == "traj") {
+            sec("TRAJECTORY SETTINGS");
+            num("Length", [] { return fmt::format("{}", cfg().trajLen); }, [](int d) { cfg().trajLen = std::clamp(cfg().trajLen + d * 30, 10, 2000); saveCfg(); });
+        } else if (sub == "pd") {
+            sec("PREVENT DEATH SETTINGS");
+            num("Lookahead Ticks", [] { return fmt::format("{}", cfg().pdLook); }, [](int d) { cfg().pdLook = std::clamp(cfg().pdLook + d, 1, 10); saveCfg(); });
+        } else if (sub == "autosave") {
+            sec("AUTOSAVE SETTINGS");
+            num("Interval (s)", [] { return fmt::format("{}", cfg().autosaveSec); }, [](int d) { cfg().autosaveSec = std::clamp(cfg().autosaveSec + d * 30, 10, 3600); saveCfg(); });
+        } else if (sub == "ac0" || sub == "ac1") {
+            int p = sub == "ac1";
+            sec(p ? "AUTOCLICKER P2 SETTINGS" : "AUTOCLICKER P1 SETTINGS");
+            num("Hold Ticks", [p] { return fmt::format("{}", cfg().acHold[p]); }, [p](int d) { cfg().acHold[p] = std::clamp(cfg().acHold[p] + d, 1, 240); saveCfg(); });
+            num("Release Ticks", [p] { return fmt::format("{}", cfg().acRel[p]); }, [p](int d) { cfg().acRel[p] = std::clamp(cfg().acRel[p] + d, 1, 240); saveCfg(); });
+            num("Clicks Per Hold", [p] { return fmt::format("{}", cfg().acClicks[p]); }, [p](int d) { cfg().acClicks[p] = std::clamp(cfg().acClicks[p] + d, 1, 10); saveCfg(); });
+        } else if (sub == "label" && m_sel >= 0) {
+            size_t i = (size_t)m_sel;
+            sec(labels::name(i));
+            tog("Enabled", labels::cfg(i).on, [i](bool v) { labels::cfg(i).on = v; labels::save(i); });
+            num("Anchor", [i] { static char const* a[] = {"Top Left", "Top Right", "Bottom Left", "Bottom Right"}; return std::string(a[std::clamp(labels::cfg(i).anchor, 0, 3)]); },
+                [i](int d) { auto& a = labels::cfg(i).anchor; a = (a + d + 4) % 4; labels::save(i); });
+            num("Font", [i] { return std::string(labels::cfg(i).font == 0 ? "Big" : "Chat"); }, [i](int) { auto& f = labels::cfg(i).font; f = 1 - f; labels::save(i); });
+            num("Size", [i] { return fmt::format("{:.2f}", labels::cfg(i).scale); }, [i](int d) { auto& s = labels::cfg(i).scale; s = std::clamp(s + d * 0.05f, 0.1f, 2.f); labels::save(i); });
+            num("Opacity", [i] { return fmt::format("{:.2f}", labels::cfg(i).opacity); }, [i](int d) { auto& o = labels::cfg(i).opacity; o = std::clamp(o + d * 0.1f, 0.1f, 1.f); labels::save(i); });
+        }
+    } else switch (m_tab) {
     case 0: {
         std::string st = r.mode == Mode::Record ? "Recording" : r.mode == Mode::Play ? "Playing" : "Idle";
         sec("BOT");
@@ -213,34 +283,26 @@ void XyzMenu::rebuild() {
         tog("Ignore Level Check", c.ignoreLevel, [](bool v) { cfg().ignoreLevel = v; saveCfg(); });
         tog("Block Inputs In Playback", c.blockInputs, [](bool v) { cfg().blockInputs = v; saveCfg(); });
         sec("AUTOMATION");
-        tog("Autosave While Recording", c.autosave, [](bool v) { cfg().autosave = v; saveCfg(); });
-        num("Autosave Interval (s)", [] { return fmt::format("{}", cfg().autosaveSec); }, [](int d) { cfg().autosaveSec = std::clamp(cfg().autosaveSec + d * 30, 10, 3600); saveCfg(); });
+        tog("Autosave While Recording", c.autosave, [](bool v) { cfg().autosave = v; saveCfg(); }, "autosave");
         tog("Auto Exit On Finish", c.autoExit, [](bool v) { cfg().autoExit = v; saveCfg(); });
         break;
     }
     case 1:
         sec("TPS");
-        tog("TPS Bypass", c.tps, [](bool v) { cfg().tps = v; saveCfg(); });
-        num("TPS", [] { return fmt::format("{}", (int)cfg().tpsVal); }, [](int d) {
-            auto& v = cfg().tpsVal; float s = v >= 10000 ? 5000 : v >= 1000 ? 500 : v >= 240 ? 60 : 10;
-            v = std::clamp(v + d * s, 1.f, 1000000.f); saveCfg(); });
-        num("Frame Budget (ms)", [] { return fmt::format("{}", (int)cfg().budgetMs); }, [](int d) { cfg().budgetMs = std::clamp(cfg().budgetMs + d, 1.f, 100.f); saveCfg(); });
+        tog("TPS Bypass", c.tps, [](bool v) { cfg().tps = v; saveCfg(); }, "tps");
         sec("SPEEDHACK");
-        tog("Speedhack", c.speed, [](bool v) { cfg().speed = v; saveCfg(); });
-        num("Speed", [] { return fmt::format("{:.2f}", cfg().speedVal); }, [](int d) { cfg().speedVal = std::clamp(cfg().speedVal + d * 0.1f, 0.05f, 100.f); saveCfg(); });
-        tog("Speedhack Audio", c.speedAudio, [](bool v) { cfg().speedAudio = v; saveCfg(); });
+        tog("Speedhack", c.speed, [](bool v) { cfg().speed = v; saveCfg(); }, "speed");
+        sec("SCROLL SPEED BUG");
+        tog("SSB Fix (song sync)", c.ssbFix, [](bool v) { cfg().ssbFix = v; saveCfg(); }, "ssb");
+        sec("LEGACY PHYSICS");
+        tog("Legacy Ship Weight (2.1)", c.legacyShip, [](bool v) { cfg().legacyShip = v; saveCfg(); }, "legship");
         break;
     case 2:
         sec("HITBOXES");
-        tog("Show Hitboxes", c.hitboxes, [](bool v) { cfg().hitboxes = v; saveCfg(); });
-        tog("Player", c.hbPlayer, [](bool v) { cfg().hbPlayer = v; saveCfg(); });
-        tog("Solid / Hazard", c.hbSolid && c.hbHazard, [](bool v) { cfg().hbSolid = cfg().hbHazard = v; saveCfg(); });
-        tog("Special / Rotated", c.hbSpecial && c.hbRotated, [](bool v) { cfg().hbSpecial = cfg().hbRotated = v; saveCfg(); });
-        tog("Hitbox Trail", c.trail, [](bool v) { cfg().trail = v; saveCfg(); });
-        num("Trail Length", [] { return fmt::format("{}", cfg().trailLen); }, [](int d) { cfg().trailLen = std::clamp(cfg().trailLen + d * 50, 10, 2000); saveCfg(); });
+        tog("Show Hitboxes", c.hitboxes, [](bool v) { cfg().hitboxes = v; saveCfg(); }, "hitbox");
+        tog("Hitbox Trail", c.trail, [](bool v) { cfg().trail = v; saveCfg(); }, "trail");
         sec("TRAJECTORY");
-        tog("Show Trajectory", c.traj, [](bool v) { cfg().traj = v; saveCfg(); });
-        num("Length", [] { return fmt::format("{}", cfg().trajLen); }, [](int d) { cfg().trajLen = std::clamp(cfg().trajLen + d * 30, 10, 2000); saveCfg(); });
+        tog("Show Trajectory", c.traj, [](bool v) { cfg().traj = v; saveCfg(); }, "traj");
         sec("LEVEL");
         tog("Layout Mode (reload level)", c.layout, [](bool v) { cfg().layout = v; saveCfg(); });
         break;
@@ -280,48 +342,30 @@ void XyzMenu::rebuild() {
         break;
     }
     case 4:
-        if (m_sel < 0) {
-            sec("LABELS");
-            tog("Labels Enabled", c.labels, [](bool v) { cfg().labels = v; saveCfg(); labels::invalidate(); });
-            for (size_t i = 0; i < labels::count(); ++i)
-                custom([this, i](CCMenu* menu, float y, float w) {
-                    auto l = CCLabelBMFont::create(labels::name(i).c_str(), "bigFont.fnt");
-                    l->limitLabelWidth(w - 150.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y});
-                    menu->addChild(l);
-                    auto sw = makeSwitch(labels::cfg(i).on, [i](bool v) { labels::cfg(i).on = v; labels::save(i); });
-                    sw->setPosition({w - 84, y}); menu->addChild(sw);
-                    auto ed = makePill("Edit", false, [this, i] { m_sel = (int)i; this->rebuild(); });
-                    ed->setPosition({w - 30, y}); menu->addChild(ed);
-                });
-        } else {
-            size_t i = (size_t)m_sel;
-            pills({{"< Back", [this] { m_sel = -1; this->rebuild(); }}});
-            sec(labels::name(i));
-            tog("Enabled", labels::cfg(i).on, [i](bool v) { labels::cfg(i).on = v; labels::save(i); });
-            num("Anchor", [i] { static char const* a[] = {"Top Left", "Top Right", "Bottom Left", "Bottom Right"}; return std::string(a[std::clamp(labels::cfg(i).anchor, 0, 3)]); },
-                [i](int d) { auto& a = labels::cfg(i).anchor; a = (a + d + 4) % 4; labels::save(i); });
-            num("Font", [i] { return std::string(labels::cfg(i).font == 0 ? "Big" : "Chat"); }, [i](int) { auto& f = labels::cfg(i).font; f = 1 - f; labels::save(i); });
-            num("Size", [i] { return fmt::format("{:.2f}", labels::cfg(i).scale); }, [i](int d) { auto& s = labels::cfg(i).scale; s = std::clamp(s + d * 0.05f, 0.1f, 2.f); labels::save(i); });
-            num("Opacity", [i] { return fmt::format("{:.2f}", labels::cfg(i).opacity); }, [i](int d) { auto& o = labels::cfg(i).opacity; o = std::clamp(o + d * 0.1f, 0.1f, 1.f); labels::save(i); });
-        }
+        sec("LABELS");
+        tog("Labels Enabled", c.labels, [](bool v) { cfg().labels = v; saveCfg(); labels::invalidate(); });
+        for (size_t i = 0; i < labels::count(); ++i)
+            custom([this, i](CCMenu* menu, float y, float w) {
+                auto l = CCLabelBMFont::create(labels::name(i).c_str(), "bigFont.fnt");
+                l->limitLabelWidth(w - 120.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y});
+                menu->addChild(l);
+                auto sw = makeSwitch(labels::cfg(i).on, [i](bool v) { labels::cfg(i).on = v; labels::save(i); });
+                sw->setPosition({w - 32, y}); menu->addChild(sw);
+                auto g = makeGear([this, i] { m_sel = (int)i; m_sub = "label"; this->rebuild(); });
+                g->setPosition({w - 66, y}); menu->addChild(g);
+            });
         break;
     default:
         sec("SURVIVAL");
-        tog("Prevent Death", c.preventDeath, [](bool v) { cfg().preventDeath = v; saveCfg(); });
-        num("Lookahead Ticks", [] { return fmt::format("{}", cfg().pdLook); }, [](int d) { cfg().pdLook = std::clamp(cfg().pdLook + d, 1, 10); saveCfg(); });
+        tog("Prevent Death", c.preventDeath, [](bool v) { cfg().preventDeath = v; saveCfg(); }, "pd");
         sec("INPUT");
         tog("Maintain Gravity", c.maintainGravity, [](bool v) { cfg().maintainGravity = v; saveCfg(); });
         tog("Mirror Inputs", c.mirror, [](bool v) { cfg().mirror = v; saveCfg(); });
         tog("Mirror Inverted", c.mirrorInv, [](bool v) { cfg().mirrorInv = v; saveCfg(); });
         tog("No Mirror Portals", c.noMirror, [](bool v) { cfg().noMirror = v; saveCfg(); });
-        for (int p = 0; p < 2; ++p) {
-            std::string pn = p ? "P2" : "P1";
-            sec("AUTOCLICKER " + pn);
-            tog("Enabled", c.acOn[p], [p](bool v) { cfg().acOn[p] = v; saveCfg(); });
-            num("Hold Ticks", [p] { return fmt::format("{}", cfg().acHold[p]); }, [p](int d) { cfg().acHold[p] = std::clamp(cfg().acHold[p] + d, 1, 240); saveCfg(); });
-            num("Release Ticks", [p] { return fmt::format("{}", cfg().acRel[p]); }, [p](int d) { cfg().acRel[p] = std::clamp(cfg().acRel[p] + d, 1, 240); saveCfg(); });
-            num("Clicks Per Hold", [p] { return fmt::format("{}", cfg().acClicks[p]); }, [p](int d) { cfg().acClicks[p] = std::clamp(cfg().acClicks[p] + d, 1, 10); saveCfg(); });
-        }
+        sec("AUTOCLICKER");
+        tog("Autoclicker P1", c.acOn[0], [](bool v) { cfg().acOn[0] = v; saveCfg(); }, "ac0");
+        tog("Autoclicker P2", c.acOn[1], [](bool v) { cfg().acOn[1] = v; saveCfg(); }, "ac1");
         break;
     }
 
@@ -351,10 +395,15 @@ void XyzMenu::rebuild() {
             switch (rw.k) {
             case Row::Toggle: {
                 auto l = CCLabelBMFont::create(rw.label.c_str(), "bigFont.fnt");
-                l->limitLabelWidth(cw - 90.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, cy});
+                l->limitLabelWidth(cw - (rw.gear.empty() ? 90.f : 120.f), .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, cy});
                 menu->addChild(l);
                 auto sw = makeSwitch(rw.on, rw.setb);
                 sw->setPosition({cw - 32, cy}); menu->addChild(sw);
+                if (!rw.gear.empty()) {
+                    auto key = rw.gear;
+                    auto g = makeGear([this, key] { m_sub = key; this->rebuild(); });
+                    g->setPosition({cw - 66, cy}); menu->addChild(g);
+                }
                 break;
             }
             case Row::Num: {

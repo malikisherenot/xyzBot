@@ -1,6 +1,6 @@
 #include "Menu.hpp"
 #include "../core/State.hpp"
-#include <Geode/modify/MenuLayer.hpp>
+#include <Geode/modify/CCScheduler.hpp>
 #include <Geode/ui/OverlayManager.hpp>
 
 using namespace geode::prelude;
@@ -116,13 +116,21 @@ public:
     float m_scale = 1.f;
 };
 
-class $modify(XyzFloatMenuLayer, MenuLayer) {
-    bool init() {
-        if (!MenuLayer::init()) return false;
-        static bool added = false;
-        if (!added) {
-            if (auto b = XyzFloatButton::create()) { OverlayManager::get()->addChild(b, 9999); added = true; }
+static Ref<XyzFloatButton> s_btn;
+
+class $modify(XyzFloatSched, CCScheduler) {
+    void update(float dt) {
+        CCScheduler::update(dt);
+        static int frames = 0;
+        if (++frames < 5) return;
+        auto scene = CCDirector::get()->getRunningScene();
+        if (!scene) return;
+        auto ov = OverlayManager::get();
+        if (!ov) return;
+        if (!s_btn) s_btn = XyzFloatButton::create();
+        if (s_btn && s_btn->getParent() != ov) {
+            if (s_btn->getParent()) s_btn->removeFromParent();
+            ov->addChild(s_btn, 9999);
         }
-        return true;
     }
 };
