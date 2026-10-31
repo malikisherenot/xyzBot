@@ -46,6 +46,9 @@ struct Cfg {
     bool autosave = true;
     int autosaveSec = 180;
     bool labels = true;
+    bool ssbFix = false, ssbInvert = false;
+    bool legacyShip = false;
+    int legacyShipPct = 6;
     bool acOn[2] = {false, false};
     int acHold[2] = {4, 4}, acRel[2] = {4, 4}, acClicks[2] = {1, 1};
 };
@@ -74,8 +77,12 @@ struct Rt {
     int maxCps[2] = {0, 0};
     size_t cpCount = 0;
     double autosaveAcc = 0.0;
+    bool ssbActive = false;
+    float ssbLast = 1.f;
+    int ssbEvents = 0;
 };
 
+float ssbFactor();
 void computeWant();
 void cpsPush(bool p2);
 int cpsNow(int p);

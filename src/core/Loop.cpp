@@ -106,7 +106,11 @@ class $modify(XyzSched, CCScheduler) {
         CCScheduler::update(c.speed ? dt * c.speedVal : dt);
         static float lastPitch = 1.f;
         float want = (c.speed && c.speedAudio) ? c.speedVal : 1.f;
-        if (want != lastPitch) {
+        if (c.ssbFix && xyz::rt().ssbActive && PlayLayer::get()) {
+            float f = std::clamp(xyz::rt().ssbLast, 0.25f, 4.f);
+            want *= c.ssbInvert ? 1.f / f : f;
+        }
+        if (std::abs(want - lastPitch) > 1e-7f) {
             lastPitch = want;
             if (auto e = FMODAudioEngine::get(); e && e->m_backgroundMusicChannel) e->m_backgroundMusicChannel->setPitch(want);
         }

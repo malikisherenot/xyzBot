@@ -30,6 +30,23 @@ int cpsNow(int p) {
     return (int)v.size();
 }
 
+float ssbFactor() {
+    auto pl = PlayLayer::get();
+    if (!pl || !pl->m_player1) return 1.f;
+    static float const speeds[5] = {251.1601f, 311.5801f, 387.4201f, 468.0002f, 576.0002f};
+    float s = pl->m_player1->m_playerSpeed;
+    int idx = 1;
+    if (s == 0.7f) idx = 0; else if (s == 0.9f) idx = 1; else if (s == 1.1f) idx = 2;
+    else if (s == 1.3f) idx = 3; else if (s == 1.6f) idx = 4;
+    float f = pl->m_player1->getPositionX();
+    float a = speeds[idx] / curTps();
+    volatile float t = f + a;
+    float c = t - f;
+    float factor = c / a;
+    if (factor <= 0.f || pl->m_levelEndAnimationStarted) factor = 1.f;
+    return factor;
+}
+
 void computeWant() {
     auto& r = rt(); auto& c = cfg();
     if (!takeover() || r.mode == Mode::Play) { r.want = {r.gameHeld[0], r.gameHeld[1]}; return; }
@@ -83,6 +100,7 @@ static void rewind() {
     r.gameHeld = {false, false}; r.acHeld = {false, false}; r.ac[0] = Ac{}; r.ac[1] = Ac{};
     r.cpsT[0].clear(); r.cpsT[1].clear(); r.maxCps[0] = r.maxCps[1] = 0;
     r.frozen = false; r.autosaveAcc = 0.0;
+    r.ssbActive = false; r.ssbLast = 1.f; r.ssbEvents = 0;
     if (r.mode == Mode::Record) {
         r.rec = Macro{};
         r.rec.tps = (uint32_t)curTps();
@@ -142,6 +160,12 @@ static void closeTick(PlayLayer* pl) {
         r.rec.ticks = r.tick;
     } else {
         r.tick++;
+    }
+    {
+        float f = ssbFactor();
+        bool act = std::abs(f - 1.f) > 1e-6f;
+        if (act && !r.ssbActive) r.ssbEvents++;
+        r.ssbActive = act; r.ssbLast = f;
     }
     if (cfg().trail) vis::sampleTrail(pl);
 }
