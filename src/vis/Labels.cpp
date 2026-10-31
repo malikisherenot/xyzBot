@@ -1,5 +1,6 @@
 #include "Vis.hpp"
 #include "../core/State.hpp"
+#include "../ui/Draw.hpp"
 #include <Geode/binding/RingObject.hpp>
 #include <Geode/binding/GameToolbox.hpp>
 
@@ -43,6 +44,7 @@ std::vector<Def>& defs() {
         x.c.font = m->getSavedValue<int>(k + "_font", 1);
         x.c.opacity = (float)m->getSavedValue<double>(k + "_op", 1.0);
         x.c.scale = (float)m->getSavedValue<double>(k + "_sc", 0.7);
+        x.c.r = m->getSavedValue<int>(k + "_cr", 255); x.c.g = m->getSavedValue<int>(k + "_cg", 255); x.c.b = m->getSavedValue<int>(k + "_cb", 255);
         d.push_back(std::move(x));
     };
     auto PL = [] { return PlayLayer::get(); };
@@ -139,11 +141,15 @@ std::string const& id(size_t i) { return defs()[i].id; }
 std::string const& name(size_t i) { return defs()[i].name; }
 Cfg& cfg(size_t i) { return defs()[i].c; }
 void invalidate() { g_refresh = true; }
+void setAllColor(int r, int g, int b) {
+    for (size_t i = 0; i < defs().size(); ++i) { auto& c = defs()[i].c; c.r = r; c.g = g; c.b = b; save(i); }
+}
 void save(size_t i) {
     auto& d = defs()[i]; auto m = Mod::get(); std::string k = "lbl_" + d.id;
     m->setSavedValue<bool>(k + "_on", d.c.on); m->setSavedValue<int>(k + "_anchor", d.c.anchor);
     m->setSavedValue<int>(k + "_font", d.c.font); m->setSavedValue<double>(k + "_op", d.c.opacity);
     m->setSavedValue<double>(k + "_sc", d.c.scale);
+    m->setSavedValue<int>(k + "_cr", d.c.r); m->setSavedValue<int>(k + "_cg", d.c.g); m->setSavedValue<int>(k + "_cb", d.c.b);
     g_refresh = true;
 }
 }
@@ -162,7 +168,7 @@ void updateLabels(PlayLayer* pl) {
         bool show = xyz::cfg().labels && l.c.on;
         if (!l.node) {
             if (!show) continue;
-            l.node = CCLabelBMFont::create("...", l.c.font == 0 ? "bigFont.fnt" : "chatFont.fnt");
+            l.node = CCLabelBMFont::create("...", xyz::draw::fontOf(l.c.font).c_str());
             l.node->setID(fmt::format("{}/label.{}", Mod::get()->getID(), l.id));
             ui->addChild(l.node, 100000);
             refresh = true;
@@ -171,10 +177,11 @@ void updateLabels(PlayLayer* pl) {
         n->setVisible(show);
         if (!show) continue;
         if (refresh) {
-            n->setFntFile(l.c.font == 0 ? "bigFont.fnt" : "chatFont.fnt");
+            n->setFntFile(xyz::draw::fontOf(l.c.font).c_str());
             n->setOpacity((GLubyte)(l.c.opacity * 255.f));
             n->setScale(l.c.scale);
         }
+        n->setColor({(GLubyte)l.c.r, (GLubyte)l.c.g, (GLubyte)l.c.b});
         auto str = l.fn(n);
         if (std::strcmp(n->getString(), str.c_str()) != 0) n->setString(str.c_str());
         if (refresh) {
