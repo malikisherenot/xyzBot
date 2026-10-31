@@ -20,7 +20,7 @@ CCNode* g_ui = nullptr;
 std::vector<Def>& defs();
 bool g_refresh = true;
 
-std::string pv(PlayLayer* pl, char const* n, std::function<double(PlayerObject*)> f, int prec) {
+std::string pv(GJBaseGameLayer* pl, char const* n, std::function<double(PlayerObject*)> f, int prec) {
     auto a = pl->m_player1; auto b = pl->m_player2;
     if (pl->m_gameState.m_isDualMode && b) return fmt::format("{}: {:.{}f} / {:.{}f}", n, f(a), prec, f(b), prec);
     return fmt::format("{}: {:.{}f}", n, f(a), prec);
