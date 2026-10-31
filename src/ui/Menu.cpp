@@ -60,7 +60,7 @@ static CCMenuItemSpriteExtra* makeSwitch(bool on, std::function<void(bool)> cb) 
 
 static CCMenuItemSpriteExtra* makePill(std::string const& text, bool accent, std::function<void()> cb, float minW = 0.f) {
     auto lbl = mkLabel(text.c_str());
-    lbl->setScale(.34f);
+    sc(lbl, .34f);
     float w = std::max(minW, lbl->getScaledContentSize().width + 18.f);
     auto node = CCNode::create();
     node->setContentSize({w, 20});
@@ -79,7 +79,7 @@ static CCMenuItemSpriteExtra* makeRound(char const* glyph, std::function<void()>
     disc(d, {10, 10}, 10.f, ccc4f(1, 1, 1, 0.13f), 1.f, ccc4f(1, 1, 1, 0.3f), 24);
     node->addChild(d);
     auto l = mkLabel(glyph);
-    l->setScale(.42f); l->setPosition({10, 10});
+    sc(l, .42f); l->setPosition({10, 10});
     node->addChild(l);
     return CCMenuItemExt::createSpriteExtra(node, [cb](auto) { cb(); });
 }
@@ -170,7 +170,7 @@ static CCMenuItemSpriteExtra* makeHelp(std::string title, std::string text) {
     disc(d, {8, 8}, 7.5f, ccc4f(1, 1, 1, 0.07f), 1.f, ccc4f(1, 1, 1, 0.3f), 20);
     node->addChild(d);
     auto l = mkLabel("?");
-    l->setScale(.34f); l->setOpacity(110); l->setPosition({8, 8});
+    sc(l, .34f); l->setOpacity(110); l->setPosition({8, 8});
     node->addChild(l);
     return CCMenuItemExt::createSpriteExtra(node, [title, text](auto) { FLAlertLayer::create(title.c_str(), text, "OK")->show(); });
 }
@@ -223,10 +223,10 @@ bool XyzMenu::init() {
     }
 
     auto title = mkLabel("xyzBot");
-    title->setScale(.5f); title->setAnchorPoint({0, .5f}); title->setPosition({18, m_h - 20});
+    sc(title, .5f); title->setAnchorPoint({0, .5f}); title->setPosition({18, m_h - 20});
     m_mainLayer->addChild(title);
     auto sub = mkLabel(fmt::format("v{}", Mod::get()->getVersion().toVString().substr(1)).c_str());
-    sub->setScale(.5f); sub->setOpacity(150); sub->setAnchorPoint({0, .5f});
+    sc(sub, .5f); sub->setOpacity(150); sub->setAnchorPoint({0, .5f});
     sub->setPosition({title->getPositionX() + title->getScaledContentSize().width + 6, m_h - 22});
     m_mainLayer->addChild(sub);
 
@@ -308,7 +308,7 @@ void XyzMenu::buildSide() {
         auto node = CCNode::create();
         node->setContentSize({SW - 12, 26});
         auto l = mkLabel(TABS[i]);
-        l->setScale(.4f); l->setPosition({(SW - 12) / 2, 13});
+        sc(l, .4f); l->setPosition({(SW - 12) / 2, 13});
         node->addChild(l);
         m_tabLabels.push_back(l);
         auto b = CCMenuItemExt::createSpriteExtra(node, [this, i](auto) {
@@ -480,10 +480,10 @@ void XyzMenu::rebuild(bool animate) {
                 std::error_code ec;
                 auto sz = std::filesystem::file_size(macroDir() / (n + ".xyz"), ec);
                 auto l = mkLabel(n.c_str());
-                l->limitLabelWidth(w - 170.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y + 4});
+                fit(l, w - 170.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y + 4});
                 menu->addChild(l);
                 auto s = mkLabel(ec ? "" : (sz >= 1024 ? fmt::format("{:.1f} KB", sz / 1024.0) : fmt::format("{} B", sz)).c_str());
-                s->setScale(.5f); s->setOpacity(140); s->setAnchorPoint({0, .5f}); s->setPosition({12, y - 8});
+                sc(s, .5f); s->setOpacity(140); s->setAnchorPoint({0, .5f}); s->setPosition({12, y - 8});
                 menu->addChild(s);
                 auto p = makePill("Play", true, [this, n] {
                     if (!startPlay(n)) Notification::create("Cannot play macro", NotificationIcon::Error)->show();
@@ -504,7 +504,7 @@ void XyzMenu::rebuild(bool animate) {
         for (size_t i = 0; i < labels::count(); ++i)
             custom([this, i](CCMenu* menu, float y, float w) {
                 auto l = mkLabel(labels::name(i).c_str());
-                l->limitLabelWidth(w - 150.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y});
+                fit(l, w - 150.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y});
                 menu->addChild(l);
                 if (!labels::help(i).empty()) {
                     auto hb = makeHelp(labels::name(i), labels::help(i));
@@ -577,7 +577,7 @@ void XyzMenu::rebuild(bool animate) {
 
         if (rw.k == Row::Section) {
             auto l = mkLabel(rw.label.c_str());
-            l->setScale(.33f); l->setColor(to3(accL())); l->setAnchorPoint({0, .5f}); l->setPosition({8, -2});
+            sc(l, .33f); l->setColor(to3(accL())); l->setAnchorPoint({0, .5f}); l->setPosition({8, -2});
             rm->addChild(l);
         } else {
             auto bg = CCDrawNode::create();
@@ -586,7 +586,7 @@ void XyzMenu::rebuild(bool animate) {
             switch (rw.k) {
             case Row::Toggle: {
                 auto l = mkLabel(rw.label.c_str());
-                l->limitLabelWidth(cw - (rw.gear.empty() ? 120.f : 150.f), .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
+                fit(l, cw - (rw.gear.empty() ? 120.f : 150.f), .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
                 rm->addChild(l);
                 if (!rw.help.empty()) {
                     auto hb = makeHelp(rw.label, rw.help);
@@ -603,7 +603,7 @@ void XyzMenu::rebuild(bool animate) {
             }
             case Row::Num: {
                 auto l = mkLabel(rw.label.c_str());
-                l->limitLabelWidth(cw - 215.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
+                fit(l, cw - 215.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
                 rm->addChild(l);
                 if (!rw.help.empty()) {
                     auto hb = makeHelp(rw.label, rw.help);
@@ -611,11 +611,11 @@ void XyzMenu::rebuild(bool animate) {
                 }
                 auto v = mkLabel(rw.get().c_str());
                 v->setColor(to3(accL()));
-                v->setScale(.42f); v->setPosition({cw - 74, 0});
-                v->limitLabelWidth(70.f, .42f, .1f);
+                sc(v, .42f); v->setPosition({cw - 74, 0});
+                fit(v, 70.f, .42f, .1f);
                 rm->addChild(v);
                 auto get = rw.get; auto step = rw.step;
-                auto fix = [v, get] { v->setString(get().c_str()); v->limitLabelWidth(70.f, .42f, .1f); };
+                auto fix = [v, get] { v->setString(get().c_str()); fit(v, 70.f, .42f, .1f); };
                 auto mi = makeRound("-", [step, fix] { step(-1); fix(); });
                 mi->setPosition({cw - 122, 0}); rm->addChild(mi);
                 auto pl = makeRound("+", [step, fix] { step(1); fix(); });
@@ -624,8 +624,8 @@ void XyzMenu::rebuild(bool animate) {
             }
             case Row::Text: {
                 auto l = mkLabel(rw.label.c_str());
-                l->setScale(.6f); l->setOpacity(190); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
-                l->setWidth((cw - 24.f) / .6f);
+                sc(l, .6f); l->setOpacity(190); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
+                l->setWidth((cw - 24.f) / (.6f * kOf(l)));
                 rm->addChild(l);
                 break;
             }

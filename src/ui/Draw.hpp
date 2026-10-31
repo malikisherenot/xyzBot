@@ -1,6 +1,7 @@
 #pragma once
 #include <Geode/Geode.hpp>
 #include <vector>
+#include <algorithm>
 
 // Shared drawing helpers. CCDrawNode blends premultiplied, so every color is premultiplied here,
 // and polygons are de-duplicated (zero-length edges make the border shader spike).
@@ -15,12 +16,39 @@ inline std::string const& fontFile() {
 inline std::string fontOf(int style) { return (style == 0 || fontBad()) ? std::string("bigFont.fnt") : fontFile(); }
 inline cocos2d::CCLabelBMFont* mkLabelStyle(char const* text, int style) {
     if (style != 0 && !fontBad()) {
-        if (auto l = cocos2d::CCLabelBMFont::create(text, fontFile().c_str())) return l;
+        if (auto l = cocos2d::CCLabelBMFont::create(text, fontFile().c_str())) { l->setTag(ARIAL_TAG); return l; }
         fontBad() = true;
     }
     return cocos2d::CCLabelBMFont::create(text, "bigFont.fnt");
 }
 inline cocos2d::CCLabelBMFont* mkLabel(char const* text) { return mkLabelStyle(text, 1); }
+
+// Arial is tagged so the size matches GD's own font: the ratio of the two fonts' line heights is measured
+// once at runtime (whatever size Geode compiled the font at), then applied to every size set below.
+constexpr int ARIAL_TAG = 0x5A7;
+inline float fontK() {
+    static float k = 0.f;
+    if (k > 0.f) return k;
+    if (fontBad()) return 1.f;
+    auto a = cocos2d::CCLabelBMFont::create("Ag", fontFile().c_str());
+    auto b = cocos2d::CCLabelBMFont::create("Ag", "bigFont.fnt");
+    if (!a || !b) { if (!a) fontBad() = true; return 1.f; }
+    float ha = a->getContentSize().height, hb = b->getContentSize().height;
+    k = (ha > 0.f && hb > 0.f) ? std::clamp(hb / ha * 1.25f, 0.5f, 8.f) : 1.f;
+    return k;
+}
+inline float kOf(cocos2d::CCLabelBMFont* l) { return l && l->getTag() == ARIAL_TAG ? fontK() : 1.f; }
+inline void sc(cocos2d::CCLabelBMFont* l, float s) { l->setScale(s * kOf(l)); }
+inline void fit(cocos2d::CCLabelBMFont* l, float width, float def, float minS) {
+    float k = kOf(l), cw = l->getContentSize().width, s = def;
+    if (cw > 0.f && cw * def * k > width) s = std::max(minS, width / (cw * k));
+    l->setScale(s * k);
+}
+inline void setStyle(cocos2d::CCLabelBMFont* l, int style) {
+    bool arial = style != 0 && !fontBad();
+    l->setFntFile(fontOf(style).c_str());
+    l->setTag(arial ? ARIAL_TAG : 0);
+}
 
 inline cocos2d::ccColor4F pm(cocos2d::ccColor4F c) { return {c.r * c.a, c.g * c.a, c.b * c.a, c.a}; }
 

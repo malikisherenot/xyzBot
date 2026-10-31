@@ -38,7 +38,7 @@ public:
         m_art = CCDrawNode::create();
         m_body->addChild(m_art);
         auto lbl = mkLabel("XYZ");
-        lbl->setScale(.34f);
+        sc(lbl, .34f);
         m_body->addChild(lbl, 2);
 
         this->redraw();
