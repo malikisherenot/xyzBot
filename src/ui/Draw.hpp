@@ -14,7 +14,7 @@ inline std::string const& fontFile() {
     }();
     return f;
 }
-inline cocos2d::CCLabelBMFont* lbl(char const* text) { return cocos2d::CCLabelBMFont::create(text, fontFile().c_str()); }
+inline cocos2d::CCLabelBMFont* mkLabel(char const* text) { return cocos2d::CCLabelBMFont::create(text, fontFile().c_str()); }
 inline std::string fontOf(int style) { return style == 0 ? std::string("bigFont.fnt") : fontFile(); }
 
 inline cocos2d::ccColor4F pm(cocos2d::ccColor4F c) { return {c.r * c.a, c.g * c.a, c.b * c.a, c.a}; }
