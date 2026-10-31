@@ -1,6 +1,7 @@
 # Changelog
 
 ## v1.6.0
+- Fixed build error in Labels.cpp (labels now take the active layer)
 - Arial Italic now compiled by Geode from the TTF (fixes the font not loading)
 - (?) tooltips next to options and labels
 - Option to hide the floating button while playing a level
