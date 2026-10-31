@@ -6,7 +6,7 @@
     "mac": "2.2081",
     "ios": "2.2081"
   },
-  "version": "v1.3.0",
+  "version": "v1.6.0",
   "id": "itzmalikhere.xyzbot",
   "name": "xyzBot",
   "developer": "itzmalikhere",
@@ -19,7 +19,13 @@
   "resources": {
     "files": [
       "resources/*.png"
-    ]
+    ],
+    "fonts": {
+      "arial-italic": {
+        "path": "resources/arial-italic.ttf",
+        "size": 40
+      }
+    }
   },
   "settings": {
     "floating-button": {

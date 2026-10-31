@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.6.0
+- Arial Italic now compiled by Geode from the TTF (fixes the font not loading)
+- (?) tooltips next to options and labels
+- Option to hide the floating button while playing a level
+- Removed the pause-menu button; gear buttons moved left
+
+## v1.5.0
+- Editor playtest support: record, replay, TPS, labels, hitboxes, trajectory
+- StartPos support: macros store their start position and can be played from a later StartPos
+- Start Position label
+- .xyz format v3 (stores start position; v2 and v1 still load)
+
+## v1.4.0
+- Fixed stray lines, white panels and square artifacts (premultiplied alpha, duplicate polygon points)
+- Theme tab: 7 presets, custom accent and panel tint
+- Label colors (per label and all labels)
+- Arial Italic font for all menus and labels
+- Animations: menu open/close, row slide-in, sliding tab highlight, switch knob, floating button
+
 ## v1.3.0
 - SSB Factor and SSB Event labels
 - SSB Fix (song speed correction during the bug)
