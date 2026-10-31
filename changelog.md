@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.6.1
+- Arial text is now sized to match GD's font automatically (fixes tiny text)
+
 ## v1.6.0
 - Fixed build error in Labels.cpp (labels now take the active layer)
 - Arial Italic now compiled by Geode from the TTF (fixes the font not loading)
