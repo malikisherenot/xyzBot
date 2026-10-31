@@ -1,6 +1,7 @@
 # Changelog
 
 ## v1.6.1
+- Fixed build error (ARIAL_TAG declared too late in Draw.hpp)
 - Arial text is now sized to match GD's font automatically (fixes tiny text)
 
 ## v1.6.0
