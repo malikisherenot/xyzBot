@@ -1,5 +1,6 @@
 #include "Menu.hpp"
 #include "Glass.hpp"
+#include "Draw.hpp"
 #include "../core/State.hpp"
 #include "../vis/Vis.hpp"
 #include <Geode/modify/PauseLayer.hpp>
@@ -10,51 +11,61 @@
 
 using namespace geode::prelude;
 using namespace xyz;
+using namespace xyz::draw;
 
 static XyzMenu* s_open = nullptr;
 static constexpr float SW = 98.f;
 static constexpr float ROW = 30.f;
-static ccColor4F const ACC = {0.f, 0.85f, 0.6f, 1.f};
 
-static void rrect(CCDrawNode* d, CCPoint o, CCSize s, float r, ccColor4F fill, float bw = 0.f, ccColor4F border = {0, 0, 0, 0}) {
-    std::vector<CCPoint> pts;
-    auto arc = [&](CCPoint c, float a0) {
-        for (int i = 0; i <= 6; ++i) {
-            float a = (a0 + i * 15.f) * 3.14159265f / 180.f;
-            pts.push_back({c.x + std::cos(a) * r, c.y + std::sin(a) * r});
-        }
-    };
-    arc({o.x + s.width - r, o.y + s.height - r}, 0);
-    arc({o.x + r, o.y + s.height - r}, 90);
-    arc({o.x + r, o.y + r}, 180);
-    arc({o.x + s.width - r, o.y + r}, 270);
-    d->drawPolygon(pts.data(), (unsigned)pts.size(), fill, bw, border);
+static ccColor4F acc(float a = 1.f, float mul = 1.f) {
+    auto& c = cfg();
+    return {c.accR / 255.f * mul, c.accG / 255.f * mul, c.accB / 255.f * mul, a};
 }
+static ccColor4F accL(float a = 1.f) { return mix(acc(a), {1, 1, 1, a}, 0.5f); }
+static ccColor3B to3(ccColor4F c) { return {(GLubyte)(c.r * 255), (GLubyte)(c.g * 255), (GLubyte)(c.b * 255)}; }
+static ccColor3B tint3() { auto& c = cfg(); return {(GLubyte)c.tintR, (GLubyte)c.tintG, (GLubyte)c.tintB}; }
+
+struct Preset { char const* n; int ar, ag, ab, tr, tg, tb; };
+static Preset const PRESETS[] = {
+    {"Emerald", 0, 217, 153, 13, 20, 28},   {"Ocean", 60, 170, 255, 10, 18, 32},  {"Violet", 170, 110, 255, 20, 14, 34},
+    {"Sunset", 255, 140, 60, 30, 16, 14},   {"Rose", 255, 90, 150, 30, 12, 22},   {"Gold", 255, 205, 60, 26, 22, 10},
+    {"Mono", 210, 215, 225, 18, 18, 20},
+};
+static int const LABEL_COLORS[][3] = {
+    {255, 255, 255}, {0, 217, 153}, {255, 90, 90}, {255, 160, 60}, {255, 225, 80},
+    {100, 255, 120}, {80, 170, 255}, {180, 120, 255}, {255, 120, 190},
+};
 
 static CCMenuItemSpriteExtra* makeSwitch(bool on, std::function<void(bool)> cb) {
     auto node = CCNode::create();
     node->setContentSize({42, 22});
-    auto d = CCDrawNode::create();
-    node->addChild(d);
+    auto tr = CCDrawNode::create(); node->addChild(tr);
+    auto kn = CCDrawNode::create(); node->addChild(kn, 1);
     auto st = std::make_shared<bool>(on);
-    auto draw = [d, st] {
-        d->clear();
+    auto draw = [tr, kn, st] {
         bool v = *st;
-        rrect(d, {0, 2}, {42, 18}, 9, v ? ccc4f(0.f, 0.7f, 0.5f, 0.95f) : ccc4f(0.03f, 0.04f, 0.06f, 0.97f), 1.4f, v ? ccc4f(0.45f, 1.f, 0.8f, 0.95f) : ccc4f(1, 1, 1, 0.55f));
-        d->drawDot({v ? 32.f : 10.f, 11.f}, 7.f, v ? ccc4f(1, 1, 1, 1) : ccc4f(0.6f, 0.64f, 0.7f, 1.f));
+        tr->clear(); kn->clear();
+        rrect(tr, {0, 2}, {42, 18}, 9, v ? acc(0.95f, 0.8f) : ccc4f(0.03f, 0.04f, 0.06f, 0.97f), 1.4f, v ? accL(0.95f) : ccc4f(1, 1, 1, 0.55f));
+        disc(kn, {0, 0}, 7.f, v ? ccc4f(1, 1, 1, 1) : ccc4f(0.6f, 0.64f, 0.7f, 1.f), 0.f, {0, 0, 0, 0}, 20);
     };
     draw();
-    return CCMenuItemExt::createSpriteExtra(node, [st, draw, cb](auto) { *st = !*st; draw(); cb(*st); });
+    kn->setPosition({on ? 32.f : 10.f, 11.f});
+    return CCMenuItemExt::createSpriteExtra(node, [st, draw, cb, kn](auto) {
+        *st = !*st; draw();
+        kn->stopAllActions();
+        kn->runAction(CCEaseBackOut::create(CCMoveTo::create(.18f, {*st ? 32.f : 10.f, 11.f})));
+        cb(*st);
+    });
 }
 
 static CCMenuItemSpriteExtra* makePill(std::string const& text, bool accent, std::function<void()> cb, float minW = 0.f) {
-    auto lbl = CCLabelBMFont::create(text.c_str(), "bigFont.fnt");
+    auto lbl = lbl(text.c_str());
     lbl->setScale(.34f);
     float w = std::max(minW, lbl->getScaledContentSize().width + 18.f);
     auto node = CCNode::create();
     node->setContentSize({w, 20});
     auto d = CCDrawNode::create();
-    rrect(d, {0, 0}, {w, 20}, 10, accent ? ccc4f(0.f, 0.65f, 0.45f, 0.9f) : ccc4f(1, 1, 1, 0.12f), 1.f, accent ? ccc4f(0.5f, 1.f, 0.85f, 0.8f) : ccc4f(1, 1, 1, 0.25f));
+    rrect(d, {0, 0}, {w, 20}, 10, accent ? acc(0.9f, 0.75f) : ccc4f(1, 1, 1, 0.12f), 1.f, accent ? accL(0.8f) : ccc4f(1, 1, 1, 0.25f));
     node->addChild(d);
     lbl->setPosition({w / 2, 10});
     node->addChild(lbl);
@@ -65,10 +76,9 @@ static CCMenuItemSpriteExtra* makeRound(char const* glyph, std::function<void()>
     auto node = CCNode::create();
     node->setContentSize({20, 20});
     auto d = CCDrawNode::create();
-    d->drawDot({10, 10}, 10, ccc4f(1, 1, 1, 0.13f));
-    d->drawCircle({10, 10}, 9.5f, {0, 0, 0, 0}, 1.f, ccc4f(1, 1, 1, 0.3f), 24);
+    disc(d, {10, 10}, 10.f, ccc4f(1, 1, 1, 0.13f), 1.f, ccc4f(1, 1, 1, 0.3f), 24);
     node->addChild(d);
-    auto l = CCLabelBMFont::create(glyph, "bigFont.fnt");
+    auto l = lbl(glyph);
     l->setScale(.42f); l->setPosition({10, 10});
     node->addChild(l);
     return CCMenuItemExt::createSpriteExtra(node, [cb](auto) { cb(); });
@@ -78,13 +88,24 @@ static CCMenuItemSpriteExtra* makeGear(std::function<void()> cb) {
     auto node = CCNode::create();
     node->setContentSize({22, 22});
     auto d = CCDrawNode::create();
-    d->drawDot({11, 11}, 11, ccc4f(1, 1, 1, 0.10f));
+    disc(d, {11, 11}, 11.f, ccc4f(1, 1, 1, 0.10f), 0.f, {0, 0, 0, 0}, 24);
     for (int i = 0; i < 8; ++i) {
         float a = i * 3.14159265f / 4.f;
-        d->drawDot({11 + std::cos(a) * 7.4f, 11 + std::sin(a) * 7.4f}, 2.3f, ccc4f(0.85f, 0.95f, 1.f, 0.95f));
+        disc(d, {11 + std::cos(a) * 7.4f, 11 + std::sin(a) * 7.4f}, 2.3f, ccc4f(0.85f, 0.95f, 1.f, 0.95f), 0.f, {0, 0, 0, 0}, 8);
     }
-    d->drawDot({11, 11}, 6.2f, ccc4f(0.85f, 0.95f, 1.f, 0.95f));
-    d->drawDot({11, 11}, 2.6f, ccc4f(0.06f, 0.09f, 0.12f, 1.f));
+    disc(d, {11, 11}, 6.2f, ccc4f(0.85f, 0.95f, 1.f, 0.95f), 0.f, {0, 0, 0, 0}, 20);
+    disc(d, {11, 11}, 2.6f, ccc4f(0.06f, 0.09f, 0.12f, 1.f), 0.f, {0, 0, 0, 0}, 14);
+    node->addChild(d);
+    return CCMenuItemExt::createSpriteExtra(node, [cb](auto) { cb(); });
+}
+
+static CCMenuItemSpriteExtra* makeChip(ccColor3B col, bool sel, std::function<void()> cb) {
+    auto node = CCNode::create();
+    node->setContentSize({24, 24});
+    auto d = CCDrawNode::create();
+    disc(d, {12, 12}, 9.5f, {col.r / 255.f, col.g / 255.f, col.b / 255.f, 1.f}, 0.f, {0, 0, 0, 0}, 24);
+    if (sel) disc(d, {12, 12}, 11.5f, {0, 0, 0, 0}, 1.6f, {1, 1, 1, 0.95f}, 28);
+    else disc(d, {12, 12}, 10.f, {0, 0, 0, 0}, 1.f, {1, 1, 1, 0.3f}, 28);
     node->addChild(d);
     return CCMenuItemExt::createSpriteExtra(node, [cb](auto) { cb(); });
 }
@@ -102,6 +123,18 @@ void XyzMenu::toggle() {
     if (s_open) s_open->show();
 }
 
+void XyzMenu::defer(std::function<void()> f) {
+    Ref<XyzMenu> self = this;
+    queueInMainThread([self, f] { if (s_open == self.data()) f(); });
+}
+void XyzMenu::later(bool animate) { this->defer([this, animate] { this->rebuild(animate); }); }
+
+void XyzMenu::themeLive() {
+    if (m_glass) glass::setTheme(m_glass, to3(acc()), tint3());
+    this->buildSide();
+}
+void XyzMenu::themeFull() { this->themeLive(); this->rebuild(false); }
+
 bool XyzMenu::init() {
     auto ws = CCDirector::get()->getWinSize();
     m_w = std::min(ws.width - 30.f, 470.f);
@@ -116,16 +149,18 @@ bool XyzMenu::init() {
         this->addChild(m_glass, -5);
         m_glass->setPosition(ws / 2);
         glass::setAlpha(m_glass, 0.f);
+        glass::setTheme(m_glass, to3(acc()), tint3());
     } else {
         auto d = CCDrawNode::create();
-        rrect(d, {0, 0}, {m_w, m_h}, 16, ccc4f(0.05f, 0.08f, 0.11f, 0.88f), 1.2f, ccc4f(0.5f, 1.f, 0.85f, 0.5f));
+        auto t = tint3();
+        rrect(d, {0, 0}, {m_w, m_h}, 16, {t.r / 255.f, t.g / 255.f, t.b / 255.f, 0.9f}, 1.2f, accL(0.5f));
         m_mainLayer->addChild(d, -1);
     }
 
-    auto title = CCLabelBMFont::create("xyzBot", "bigFont.fnt");
+    auto title = lbl("xyzBot");
     title->setScale(.5f); title->setAnchorPoint({0, .5f}); title->setPosition({18, m_h - 20});
     m_mainLayer->addChild(title);
-    auto sub = CCLabelBMFont::create(fmt::format("v{}", Mod::get()->getVersion().toVString().substr(1)).c_str(), "chatFont.fnt");
+    auto sub = lbl(fmt::format("v{}", Mod::get()->getVersion().toVString().substr(1)).c_str());
     sub->setScale(.5f); sub->setOpacity(150); sub->setAnchorPoint({0, .5f});
     sub->setPosition({title->getPositionX() + title->getScaledContentSize().width + 6, m_h - 22});
     m_mainLayer->addChild(sub);
@@ -147,46 +182,80 @@ bool XyzMenu::init() {
 
     s_open = this;
     this->buildSide();
-    this->rebuild();
+    this->rebuild(true);
 
-    m_mainLayer->setScale(.94f);
-    m_mainLayer->runAction(CCEaseExponentialOut::create(CCScaleTo::create(.22f, 1.f)));
-    this->schedule(schedule_selector(XyzMenu::fadeIn));
+    m_mainLayer->setScale(.92f);
+    m_mainLayer->setPositionY(m_mainLayer->getPositionY() - 10.f);
+    m_mainLayer->runAction(CCEaseExponentialOut::create(CCScaleTo::create(.26f, 1.f)));
+    m_mainLayer->runAction(CCEaseExponentialOut::create(CCMoveBy::create(.26f, {0, 10.f})));
+    this->schedule(schedule_selector(XyzMenu::fadeStep));
     return true;
 }
 
-void XyzMenu::fadeIn(float dt) {
-    m_fade = std::min(1.f, m_fade + dt * 6.f);
+void XyzMenu::fadeStep(float dt) {
+    m_fade = std::clamp(m_fade + dt * (m_closing ? -8.f : 6.f), 0.f, 1.f);
     if (m_glass) glass::setAlpha(m_glass, m_fade);
-    if (m_fade >= 1.f) this->unschedule(schedule_selector(XyzMenu::fadeIn));
+    if (!m_closing && m_fade >= 1.f) this->unschedule(schedule_selector(XyzMenu::fadeStep));
+}
+
+void XyzMenu::onClose(CCObject*) {
+    if (m_closing) return;
+    m_closing = true;
+    s_open = nullptr;
+    m_mainLayer->stopAllActions();
+    m_mainLayer->runAction(CCEaseExponentialIn::create(CCScaleTo::create(.14f, .93f)));
+    this->schedule(schedule_selector(XyzMenu::fadeStep));
+    this->scheduleOnce(schedule_selector(XyzMenu::doClose), .15f);
+}
+void XyzMenu::doClose(float) { Popup::onClose(nullptr); }
+
+static char const* TABS[] = {"Bot", "Physics", "Visuals", "Macros", "Labels", "Assist", "Theme"};
+static constexpr int NTABS = 7;
+
+void XyzMenu::moveHl(bool animate) {
+    if (!m_hl) return;
+    float h2 = m_h - 52.f;
+    CCPoint p = {16.f, 12.f + h2 - 6.f - 26.f - m_tab * 29.f};
+    m_hl->stopAllActions();
+    if (animate) m_hl->runAction(CCEaseExponentialOut::create(CCMoveTo::create(.28f, p)));
+    else m_hl->setPosition(p);
+    for (int i = 0; i < (int)m_tabLabels.size(); ++i) {
+        m_tabLabels[i]->stopAllActions();
+        m_tabLabels[i]->runAction(CCFadeTo::create(.15f, i == m_tab ? 255 : 170));
+    }
 }
 
 void XyzMenu::buildSide() {
     m_side->removeAllChildren();
+    m_tabLabels.clear();
+    float h2 = m_h - 52.f;
     auto d = CCDrawNode::create();
-    rrect(d, {10, 12}, {SW, m_h - 52}, 12, ccc4f(1, 1, 1, 0.05f), 1.f, ccc4f(1, 1, 1, 0.12f));
+    rrect(d, {10, 12}, {SW, h2}, 12, ccc4f(1, 1, 1, 0.05f), 1.f, ccc4f(1, 1, 1, 0.12f));
     m_side->addChild(d);
+    auto hl = CCDrawNode::create();
+    rrect(hl, {0, 0}, {SW - 12, 26}, 10, acc(0.75f, 0.8f), 1.f, accL(0.7f));
+    m_side->addChild(hl);
+    m_hl = hl;
     auto menu = CCMenu::create();
     menu->setPosition({0, 0});
-    m_side->addChild(menu);
-    char const* names[] = {"Bot", "Physics", "Visuals", "Macros", "Labels", "Assist"};
-    float y = m_h - 52.f - 6.f;
-    for (int i = 0; i < 6; ++i) {
-        bool sel = i == m_tab;
+    m_side->addChild(menu, 2);
+    for (int i = 0; i < NTABS; ++i) {
         auto node = CCNode::create();
         node->setContentSize({SW - 12, 26});
-        auto bg = CCDrawNode::create();
-        if (sel) rrect(bg, {0, 0}, {SW - 12, 26}, 10, ccc4f(0.f, 0.65f, 0.45f, 0.75f), 1.f, ccc4f(0.5f, 1.f, 0.85f, 0.7f));
-        else rrect(bg, {0, 0}, {SW - 12, 26}, 10, ccc4f(1, 1, 1, 0.04f));
-        node->addChild(bg);
-        auto l = CCLabelBMFont::create(names[i], "bigFont.fnt");
+        auto l = lbl(TABS[i]);
         l->setScale(.4f); l->setPosition({(SW - 12) / 2, 13});
-        if (!sel) l->setOpacity(200);
         node->addChild(l);
-        auto b = CCMenuItemExt::createSpriteExtra(node, [this, i](auto) { m_tab = i; m_sel = -1; m_sub.clear(); this->buildSide(); this->rebuild(); });
-        b->setPosition({10 + SW / 2, y - 13 - i * 31.f + 0.f});
+        m_tabLabels.push_back(l);
+        auto b = CCMenuItemExt::createSpriteExtra(node, [this, i](auto) {
+            if (m_tab == i && m_sub.empty()) return;
+            m_tab = i; m_sel = -1; m_sub.clear();
+            this->moveHl(true);
+            this->later(true);
+        });
+        b->setPosition({10 + SW / 2, 12.f + h2 - 6.f - 13.f - i * 29.f});
         menu->addChild(b);
     }
+    this->moveHl(false);
 }
 
 namespace {
@@ -199,11 +268,11 @@ struct Row {
     std::function<std::string()> get;
     std::function<void(int)> step;
     std::vector<std::pair<std::string, std::function<void()>>> pills;
-    std::function<void(CCMenu*, float, float)> custom;  // menu, y (row center), width
+    std::function<void(CCMenu*, float, float)> custom;
 };
 }
 
-void XyzMenu::rebuild() {
+void XyzMenu::rebuild(bool animate) {
     auto content = m_scroll->m_contentLayer;
     content->removeAllChildren();
     auto& c = cfg(); auto& r = rt();
@@ -216,11 +285,25 @@ void XyzMenu::rebuild() {
     auto pills = [&](std::vector<std::pair<std::string, std::function<void()>>> p) { Row x; x.k = Row::Pills; x.pills = std::move(p); rows.push_back(std::move(x)); };
     auto custom = [&](std::function<void(CCMenu*, float, float)> f) { Row x; x.k = Row::Custom; x.custom = std::move(f); rows.push_back(std::move(x)); };
 
-    auto back = [&] { pills({{"< Back", [this] { m_sub.clear(); this->rebuild(); }}}); };
-    auto sub = m_sub;
+    auto colorRows = [&](int* cr, int* cg, int* cb, std::function<void()> changed) {
+        num("Red", [cr] { return fmt::format("{}", *cr); }, [cr, changed](int d) { *cr = std::clamp(*cr + d * 15, 0, 255); changed(); });
+        num("Green", [cg] { return fmt::format("{}", *cg); }, [cg, changed](int d) { *cg = std::clamp(*cg + d * 15, 0, 255); changed(); });
+        num("Blue", [cb] { return fmt::format("{}", *cb); }, [cb, changed](int d) { *cb = std::clamp(*cb + d * 15, 0, 255); changed(); });
+    };
+    auto labelChips = [&](std::function<bool(int)> selected, std::function<void(int)> pick) {
+        custom([=, this](CCMenu* menu, float y, float w) {
+            for (int i = 0; i < 9; ++i) {
+                ccColor3B col = {(GLubyte)LABEL_COLORS[i][0], (GLubyte)LABEL_COLORS[i][1], (GLubyte)LABEL_COLORS[i][2]};
+                auto ch = makeChip(col, selected(i), [this, i, pick] { pick(i); this->later(false); });
+                ch->setPosition({22.f + i * ((w - 44.f) / 8.f), y});
+                menu->addChild(ch);
+            }
+        });
+    };
 
+    auto sub = m_sub;
     if (!sub.empty()) {
-        back();
+        pills({{"< Back", [this] { m_sub.clear(); this->later(true); }}});
         if (sub == "tps") {
             sec("TPS SETTINGS");
             num("TPS", [] { return fmt::format("{}", (int)cfg().tpsVal); }, [](int d) {
@@ -266,16 +349,21 @@ void XyzMenu::rebuild() {
             tog("Enabled", labels::cfg(i).on, [i](bool v) { labels::cfg(i).on = v; labels::save(i); });
             num("Anchor", [i] { static char const* a[] = {"Top Left", "Top Right", "Bottom Left", "Bottom Right"}; return std::string(a[std::clamp(labels::cfg(i).anchor, 0, 3)]); },
                 [i](int d) { auto& a = labels::cfg(i).anchor; a = (a + d + 4) % 4; labels::save(i); });
-            num("Font", [i] { return std::string(labels::cfg(i).font == 0 ? "Big" : "Chat"); }, [i](int) { auto& f = labels::cfg(i).font; f = 1 - f; labels::save(i); });
+            num("Font", [i] { return std::string(labels::cfg(i).font == 0 ? "GD Big" : "Arial"); }, [i](int) { auto& f = labels::cfg(i).font; f = 1 - f; labels::save(i); });
             num("Size", [i] { return fmt::format("{:.2f}", labels::cfg(i).scale); }, [i](int d) { auto& s = labels::cfg(i).scale; s = std::clamp(s + d * 0.05f, 0.1f, 2.f); labels::save(i); });
             num("Opacity", [i] { return fmt::format("{:.2f}", labels::cfg(i).opacity); }, [i](int d) { auto& o = labels::cfg(i).opacity; o = std::clamp(o + d * 0.1f, 0.1f, 1.f); labels::save(i); });
+            sec("COLOR");
+            labelChips([i](int k) { auto& l = labels::cfg(i); return l.r == LABEL_COLORS[k][0] && l.g == LABEL_COLORS[k][1] && l.b == LABEL_COLORS[k][2]; },
+                       [i](int k) { auto& l = labels::cfg(i); l.r = LABEL_COLORS[k][0]; l.g = LABEL_COLORS[k][1]; l.b = LABEL_COLORS[k][2]; labels::save(i); });
+            auto& l = labels::cfg(i);
+            colorRows(&l.r, &l.g, &l.b, [i] { labels::save(i); });
         }
     } else switch (m_tab) {
     case 0: {
         std::string st = r.mode == Mode::Record ? "Recording" : r.mode == Mode::Play ? "Playing" : "Idle";
         sec("BOT");
         txt("State: " + st);
-        pills({{"Record", [this] { startRecord(); this->rebuild(); }}, {"Stop", [this] { stopAll(true); this->rebuild(); }}, {"Step", [] { stepOnce(); }}});
+        pills({{"Record", [this] { startRecord(); this->later(false); }}, {"Stop", [this] { stopAll(true); this->later(false); }}, {"Step", [] { stepOnce(); }}});
         tog("Frame Stepper", c.stepper, [](bool v) { cfg().stepper = v; });
         tog("Noclip", c.noclip, [](bool v) { cfg().noclip = v; saveCfg(); });
         sec("ACCURACY");
@@ -308,7 +396,7 @@ void XyzMenu::rebuild() {
         break;
     case 3: {
         sec("MACROS");
-        pills({{"Record", [this] { startRecord(); this->onClose(nullptr); }}, {"Stop", [this] { stopAll(true); this->rebuild(); }},
+        pills({{"Record", [this] { startRecord(); this->onClose(nullptr); }}, {"Stop", [this] { stopAll(true); this->later(false); }},
                {"Import", [this] {
                     int n = 0; std::error_code ec;
                     for (auto& e : std::filesystem::directory_iterator(macroDir(), ec)) {
@@ -318,24 +406,24 @@ void XyzMenu::rebuild() {
                         if (importMacro(m, e.path()) && saveMacro(m, e.path().stem().string())) n++;
                     }
                     Notification::create(fmt::format("Imported {}", n), NotificationIcon::Info)->show();
-                    this->rebuild(); }}});
+                    this->later(false); }}});
         auto names = listMacros();
         if (names.empty()) txt("No macros yet. Drop .gdr/.txt files into the macros folder and press Import.");
         for (auto& n : names) {
             custom([this, n](CCMenu* menu, float y, float w) {
                 std::error_code ec;
                 auto sz = std::filesystem::file_size(macroDir() / (n + ".xyz"), ec);
-                auto l = CCLabelBMFont::create(n.c_str(), "bigFont.fnt");
+                auto l = lbl(n.c_str());
                 l->limitLabelWidth(w - 170.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y + 4});
                 menu->addChild(l);
-                auto s = CCLabelBMFont::create(ec ? "" : (sz >= 1024 ? fmt::format("{:.1f} KB", sz / 1024.0) : fmt::format("{} B", sz)).c_str(), "chatFont.fnt");
+                auto s = lbl(ec ? "" : (sz >= 1024 ? fmt::format("{:.1f} KB", sz / 1024.0) : fmt::format("{} B", sz)).c_str());
                 s->setScale(.5f); s->setOpacity(140); s->setAnchorPoint({0, .5f}); s->setPosition({12, y - 8});
                 menu->addChild(s);
                 auto p = makePill("Play", true, [this, n] {
                     if (!startPlay(n)) Notification::create("Cannot play macro", NotificationIcon::Error)->show();
                     else this->onClose(nullptr); });
                 p->setPosition({w - 82, y}); menu->addChild(p);
-                auto dl = makePill("Del", false, [this, n] { std::error_code e2; std::filesystem::remove(macroDir() / (n + ".xyz"), e2); this->rebuild(); });
+                auto dl = makePill("Del", false, [this, n] { std::error_code e2; std::filesystem::remove(macroDir() / (n + ".xyz"), e2); this->later(false); });
                 dl->setPosition({w - 30, y}); menu->addChild(dl);
             });
         }
@@ -344,18 +432,21 @@ void XyzMenu::rebuild() {
     case 4:
         sec("LABELS");
         tog("Labels Enabled", c.labels, [](bool v) { cfg().labels = v; saveCfg(); labels::invalidate(); });
+        sec("ALL LABELS COLOR");
+        labelChips([](int) { return false; }, [](int k) { labels::setAllColor(LABEL_COLORS[k][0], LABEL_COLORS[k][1], LABEL_COLORS[k][2]); });
+        sec("EACH LABEL");
         for (size_t i = 0; i < labels::count(); ++i)
             custom([this, i](CCMenu* menu, float y, float w) {
-                auto l = CCLabelBMFont::create(labels::name(i).c_str(), "bigFont.fnt");
+                auto l = lbl(labels::name(i).c_str());
                 l->limitLabelWidth(w - 120.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y});
                 menu->addChild(l);
                 auto sw = makeSwitch(labels::cfg(i).on, [i](bool v) { labels::cfg(i).on = v; labels::save(i); });
                 sw->setPosition({w - 32, y}); menu->addChild(sw);
-                auto g = makeGear([this, i] { m_sel = (int)i; m_sub = "label"; this->rebuild(); });
+                auto g = makeGear([this, i] { m_sel = (int)i; m_sub = "label"; this->later(true); });
                 g->setPosition({w - 66, y}); menu->addChild(g);
             });
         break;
-    default:
+    case 5:
         sec("SURVIVAL");
         tog("Prevent Death", c.preventDeath, [](bool v) { cfg().preventDeath = v; saveCfg(); }, "pd");
         sec("INPUT");
@@ -367,6 +458,33 @@ void XyzMenu::rebuild() {
         tog("Autoclicker P1", c.acOn[0], [](bool v) { cfg().acOn[0] = v; saveCfg(); }, "ac0");
         tog("Autoclicker P2", c.acOn[1], [](bool v) { cfg().acOn[1] = v; saveCfg(); }, "ac1");
         break;
+    default: {
+        sec("PRESETS");
+        custom([this](CCMenu* menu, float y, float w) {
+            int n = (int)(sizeof(PRESETS) / sizeof(PRESETS[0]));
+            for (int i = 0; i < n; ++i) {
+                auto& p = PRESETS[i];
+                auto ch = makeChip({(GLubyte)p.ar, (GLubyte)p.ag, (GLubyte)p.ab}, cfg().themeIdx == i, [this, i] {
+                    auto& p2 = PRESETS[i]; auto& c2 = cfg();
+                    c2.themeIdx = i; c2.accR = p2.ar; c2.accG = p2.ag; c2.accB = p2.ab; c2.tintR = p2.tr; c2.tintG = p2.tg; c2.tintB = p2.tb;
+                    saveCfg();
+                    this->defer([this] { this->themeFull(); });
+                });
+                ch->setPosition({22.f + i * ((w - 44.f) / (n - 1)), y});
+                menu->addChild(ch);
+            }
+        });
+        sec("ACCENT COLOR");
+        colorRows(&c.accR, &c.accG, &c.accB, [this] { cfg().themeIdx = -1; saveCfg(); this->defer([this] { this->themeLive(); }); });
+        sec("PANEL TINT");
+        colorRows(&c.tintR, &c.tintG, &c.tintB, [this] { cfg().themeIdx = -1; saveCfg(); this->defer([this] { this->themeLive(); }); });
+        pills({{"Reset Theme", [this] {
+            auto& p = PRESETS[0]; auto& c2 = cfg();
+            c2.themeIdx = 0; c2.accR = p.ar; c2.accG = p.ag; c2.accB = p.ab; c2.tintR = p.tr; c2.tintG = p.tg; c2.tintB = p.tb;
+            saveCfg();
+            this->defer([this] { this->themeFull(); }); }}});
+        break;
+    }
     }
 
     float cw = m_w - SW - 30.f, ch = m_h - 52.f;
@@ -375,57 +493,60 @@ void XyzMenu::rebuild() {
     total = std::max(total + 6.f, ch);
     content->setContentSize({cw, total});
 
-    auto menu = CCMenu::create();
-    menu->setPosition({0, 0});
-    menu->setContentSize({cw, total});
-    content->addChild(menu, 2);
-    auto bg = CCDrawNode::create();
-    content->addChild(bg, 1);
-
     float y = total - 4.f;
+    int idx = 0;
     for (auto& rw : rows) {
         float h = rw.k == Row::Section ? 22.f : ROW + 2.f;
         float cy = y - h / 2.f;
+        auto rm = CCMenu::create();
+        rm->setPosition({0, cy});
+        rm->setContentSize({cw, h});
+        content->addChild(rm);
+
         if (rw.k == Row::Section) {
-            auto l = CCLabelBMFont::create(rw.label.c_str(), "bigFont.fnt");
-            l->setScale(.33f); l->setColor({90, 255, 200}); l->setAnchorPoint({0, .5f}); l->setPosition({8, cy - 2});
-            menu->addChild(l);
+            auto l = lbl(rw.label.c_str());
+            l->setScale(.33f); l->setColor(to3(accL())); l->setAnchorPoint({0, .5f}); l->setPosition({8, -2});
+            rm->addChild(l);
         } else {
-            rrect(bg, {0, y - h + 2}, {cw, ROW}, 9, ccc4f(1, 1, 1, 0.055f), 1.f, ccc4f(1, 1, 1, 0.10f));
+            auto bg = CCDrawNode::create();
+            rrect(bg, {0, -ROW / 2.f}, {cw, ROW}, 9, ccc4f(1, 1, 1, 0.055f), 1.f, ccc4f(1, 1, 1, 0.10f));
+            rm->addChild(bg, -1);
             switch (rw.k) {
             case Row::Toggle: {
-                auto l = CCLabelBMFont::create(rw.label.c_str(), "bigFont.fnt");
-                l->limitLabelWidth(cw - (rw.gear.empty() ? 90.f : 120.f), .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, cy});
-                menu->addChild(l);
+                auto l = lbl(rw.label.c_str());
+                l->limitLabelWidth(cw - (rw.gear.empty() ? 90.f : 120.f), .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
+                rm->addChild(l);
                 auto sw = makeSwitch(rw.on, rw.setb);
-                sw->setPosition({cw - 32, cy}); menu->addChild(sw);
+                sw->setPosition({cw - 32, 0}); rm->addChild(sw);
                 if (!rw.gear.empty()) {
                     auto key = rw.gear;
-                    auto g = makeGear([this, key] { m_sub = key; this->rebuild(); });
-                    g->setPosition({cw - 66, cy}); menu->addChild(g);
+                    auto g = makeGear([this, key] { m_sub = key; this->later(true); });
+                    g->setPosition({cw - 66, 0}); rm->addChild(g);
                 }
                 break;
             }
             case Row::Num: {
-                auto l = CCLabelBMFont::create(rw.label.c_str(), "bigFont.fnt");
-                l->limitLabelWidth(cw - 190.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, cy});
-                menu->addChild(l);
-                auto v = CCLabelBMFont::create(rw.get().c_str(), "goldFont.fnt");
-                v->setScale(.42f); v->setPosition({cw - 74, cy});
-                menu->addChild(v);
+                auto l = lbl(rw.label.c_str());
+                l->limitLabelWidth(cw - 190.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
+                rm->addChild(l);
+                auto v = lbl(rw.get().c_str());
+                v->setColor(to3(accL()));
+                v->setScale(.42f); v->setPosition({cw - 74, 0});
+                v->limitLabelWidth(70.f, .42f, .1f);
+                rm->addChild(v);
                 auto get = rw.get; auto step = rw.step;
                 auto fix = [v, get] { v->setString(get().c_str()); v->limitLabelWidth(70.f, .42f, .1f); };
                 auto mi = makeRound("-", [step, fix] { step(-1); fix(); });
-                mi->setPosition({cw - 122, cy}); menu->addChild(mi);
+                mi->setPosition({cw - 122, 0}); rm->addChild(mi);
                 auto pl = makeRound("+", [step, fix] { step(1); fix(); });
-                pl->setPosition({cw - 26, cy}); menu->addChild(pl);
+                pl->setPosition({cw - 26, 0}); rm->addChild(pl);
                 break;
             }
             case Row::Text: {
-                auto l = CCLabelBMFont::create(rw.label.c_str(), "chatFont.fnt");
-                l->setScale(.6f); l->setOpacity(190); l->setAnchorPoint({0, .5f}); l->setPosition({12, cy});
+                auto l = lbl(rw.label.c_str());
+                l->setScale(.6f); l->setOpacity(190); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
                 l->setWidth((cw - 24.f) / .6f);
-                menu->addChild(l);
+                rm->addChild(l);
                 break;
             }
             case Row::Pills: {
@@ -433,23 +554,28 @@ void XyzMenu::rebuild() {
                 for (auto& [t, f] : rw.pills) {
                     auto p = makePill(t, t == "Record" || t == "Step", f, 64.f);
                     p->setAnchorPoint({0, .5f});
-                    p->setPosition({x, cy}); menu->addChild(p);
+                    p->setPosition({x, 0}); rm->addChild(p);
                     x += p->getContentSize().width + 8.f;
                 }
                 break;
             }
-            case Row::Custom: rw.custom(menu, cy, cw); break;
+            case Row::Custom: rw.custom(rm, 0.f, cw); break;
             default: break;
             }
         }
-        y -= h;
+
+        if (animate) {
+            rm->setPositionX(28.f);
+            rm->setCascadeOpacityEnabled(true);
+            rm->setOpacity(0);
+            rm->runAction(CCSequence::create(
+                CCDelayTime::create(std::min(idx, 12) * 0.03f),
+                CCSpawn::create(CCEaseExponentialOut::create(CCMoveTo::create(.3f, {0, cy})), CCFadeIn::create(.25f), nullptr),
+                nullptr));
+        }
+        y -= h; ++idx;
     }
     m_scroll->moveToTop();
-}
-
-void XyzMenu::onClose(CCObject* s) {
-    s_open = nullptr;
-    Popup::onClose(s);
 }
 
 class $modify(XyzPause, PauseLayer) {
@@ -457,7 +583,7 @@ class $modify(XyzPause, PauseLayer) {
         PauseLayer::customSetup();
         auto menu = this->getChildByID("left-button-menu");
         if (!menu) return;
-        auto spr = ButtonSprite::create("XYZ", "goldFont.fnt", "GJ_button_04.png", .6f);
+        auto spr = ButtonSprite::create("XYZ", fontFile().c_str(), "GJ_button_04.png", .6f);
         auto b = CCMenuItemExt::createSpriteExtra(spr, [](auto) { XyzMenu::toggle(); });
         b->setID("xyz-button"_spr);
         menu->addChild(b);

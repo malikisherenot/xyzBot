@@ -1,16 +1,22 @@
 #include "Menu.hpp"
+#include "Draw.hpp"
 #include "../core/State.hpp"
 #include <Geode/modify/CCScheduler.hpp>
 #include <Geode/ui/OverlayManager.hpp>
 
 using namespace geode::prelude;
+using namespace xyz::draw;
 
 class XyzFloatButton : public CCLayer {
     static constexpr float R = 22.f;
     CCNode* m_body = nullptr;
+    CCNode* m_halo = nullptr;
+    CCDrawNode* m_art = nullptr;
     CCPoint m_start;
     bool m_down = false, m_moved = false;
     float m_fx = 0.06f, m_fy = 0.86f;
+    float m_target = 1.f;
+    int m_drawnR = -1, m_drawnG = -1, m_drawnB = -1;
 
 public:
     static XyzFloatButton* create() {
@@ -25,25 +31,40 @@ public:
         m_fx = (float)m->getSavedValue<double>("btn_fx", 0.06);
         m_fy = (float)m->getSavedValue<double>("btn_fy", 0.86);
 
+        m_halo = CCNode::create();
+        this->addChild(m_halo);
         m_body = CCNode::create();
         this->addChild(m_body);
-
-        auto dn = CCDrawNode::create();
-        for (int i = 6; i >= 1; --i) dn->drawDot({0, 0}, R + i * 1.6f, {0.f, 0.9f, 0.6f, 0.035f * (7 - i)});
-        dn->drawDot({0, 0}, R, {0.05f, 0.09f, 0.12f, 0.92f});
-        dn->drawDot({0, 0}, R - 3.f, {0.f, 0.75f, 0.5f, 0.95f});
-        dn->drawCircle({0, 0}, R - 0.5f, {0, 0, 0, 0}, 1.2f, {1, 1, 1, 0.85f}, 48);
-        dn->drawDot({-R * 0.28f, R * 0.38f}, R * 0.45f, {1, 1, 1, 0.10f});
-        m_body->addChild(dn);
-
-        auto lbl = CCLabelBMFont::create("XYZ", "bigFont.fnt");
+        m_art = CCDrawNode::create();
+        m_body->addChild(m_art);
+        auto lbl = lbl("XYZ");
         lbl->setScale(.34f);
-        m_body->addChild(lbl);
+        m_body->addChild(lbl, 2);
+
+        this->redraw();
+        m_halo->runAction(CCRepeatForever::create(CCSequence::create(
+            CCEaseSineInOut::create(CCScaleTo::create(1.4f, 1.12f)),
+            CCEaseSineInOut::create(CCScaleTo::create(1.4f, 0.96f)), nullptr)));
 
         this->setTouchEnabled(true);
         this->place(false);
         this->schedule(schedule_selector(XyzFloatButton::tick), 0.1f);
         return true;
+    }
+
+    void redraw() {
+        auto& c = xyz::cfg();
+        m_drawnR = c.accR; m_drawnG = c.accG; m_drawnB = c.accB;
+        ccColor4F a = {c.accR / 255.f, c.accG / 255.f, c.accB / 255.f, 1.f};
+        m_art->clear();
+        auto h = static_cast<CCDrawNode*>(m_halo->getChildByTag(77));
+        if (!h) { h = CCDrawNode::create(); h->setTag(77); m_halo->addChild(h); }
+        h->clear();
+        for (int i = 6; i >= 1; --i) disc(h, {0, 0}, R + i * 1.6f, {a.r, a.g, a.b, 0.035f * (7 - i)});
+        disc(m_art, {0, 0}, R, {0.05f, 0.09f, 0.12f, 0.94f});
+        disc(m_art, {0, 0}, R - 3.f, {a.r * 0.8f, a.g * 0.8f, a.b * 0.8f, 0.96f});
+        disc(m_art, {0, 0}, R - 0.5f, {0, 0, 0, 0}, 1.2f, {1, 1, 1, 0.85f}, 48);
+        disc(m_art, {-R * 0.28f, R * 0.38f}, R * 0.42f, {1, 1, 1, 0.12f});
     }
 
     void registerWithTouchDispatcher() override {
@@ -58,7 +79,7 @@ public:
     void place(bool animate) {
         auto s = CCDirector::get()->getWinSize();
         auto p = clampPos({m_fx * s.width, m_fy * s.height});
-        if (animate) this->runAction(CCEaseExponentialOut::create(CCMoveTo::create(0.18f, p)));
+        if (animate) this->runAction(CCEaseBackOut::create(CCMoveTo::create(0.25f, p)));
         else this->setPosition(p);
     }
 
@@ -66,11 +87,15 @@ public:
         bool on = Mod::get()->getSettingValue<bool>("floating-button");
         this->setVisible(on);
         if (!on) return;
+        auto& c = xyz::cfg();
+        if (c.accR != m_drawnR || c.accG != m_drawnG || c.accB != m_drawnB) this->redraw();
         auto pl = PlayLayer::get();
-        bool ingame = pl && !pl->m_isPaused;
-        float target = m_down ? 0.9f : ingame ? 0.7f : 1.f;
-        m_scale += (target - m_scale) * 0.4f;
-        m_body->setScale(m_scale);
+        float target = (pl && !pl->m_isPaused) ? 0.7f : 1.f;
+        if (target != m_target && !m_down) {
+            m_target = target;
+            m_body->stopAllActions();
+            m_body->runAction(CCEaseBackOut::create(CCScaleTo::create(0.25f, m_target)));
+        }
         if (!m_down && !m_moved) {
             auto s = CCDirector::get()->getWinSize();
             auto p = clampPos({m_fx * s.width, m_fy * s.height});
@@ -86,6 +111,8 @@ public:
         if (!hit(t)) return false;
         m_start = t->getLocation(); m_moved = false; m_down = true;
         this->stopAllActions();
+        m_body->stopAllActions();
+        m_body->runAction(CCEaseSineOut::create(CCScaleTo::create(0.08f, m_target * 0.85f)));
         return true;
     }
 
@@ -94,8 +121,14 @@ public:
         if (m_moved) this->setPosition(clampPos(t->getLocation()));
     }
 
-    void ccTouchEnded(CCTouch*, CCEvent*) override {
+    void release() {
         m_down = false;
+        m_body->stopAllActions();
+        m_body->runAction(CCEaseBackOut::create(CCScaleTo::create(0.28f, m_target)));
+    }
+
+    void ccTouchEnded(CCTouch*, CCEvent*) override {
+        release();
         if (m_moved) {
             auto s = CCDirector::get()->getWinSize();
             auto p = this->getPosition();
@@ -111,9 +144,7 @@ public:
         XyzMenu::toggle();
     }
 
-    void ccTouchCancelled(CCTouch*, CCEvent*) override { m_down = false; m_moved = false; }
-
-    float m_scale = 1.f;
+    void ccTouchCancelled(CCTouch*, CCEvent*) override { release(); m_moved = false; }
 };
 
 static Ref<XyzFloatButton> s_btn;

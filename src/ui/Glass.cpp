@@ -42,6 +42,8 @@ uniform vec2 u_res;
 uniform vec2 u_half;
 uniform float u_radius;
 uniform float u_alpha;
+uniform vec3 u_accent;
+uniform vec3 u_tint;
 float sdRound(vec2 p, vec2 b, float r) {
     vec2 q = abs(p) - b + r;
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
@@ -54,11 +56,11 @@ void main() {
     vec3 bl = texture2D(CC_Texture0, v_uv).rgb;
     float l = dot(bl, vec3(0.299, 0.587, 0.114));
     bl = mix(vec3(l), bl, 0.8);
-    vec3 col = mix(bl * 0.5, vec3(0.05, 0.08, 0.11), 0.42);
+    vec3 col = mix(bl * 0.5, u_tint, 0.42);
     float g = clamp(p.y / u_half.y * 0.5 + 0.5, 0.0, 1.0);
     col += vec3(0.10, 0.14, 0.16) * pow(g, 2.5);
     float edge = smoothstep(-3.0, 0.0, d) * (1.0 - smoothstep(0.0, 1.0, d));
-    col += vec3(0.55, 1.0, 0.85) * edge * 0.5;
+    col += mix(u_accent, vec3(1.0), 0.45) * edge * 0.5;
     float a = mask * u_alpha;
     gl_FragColor = vec4(col * a, a);
 }
@@ -91,6 +93,8 @@ public:
     std::function<void(CCGLProgram*)> m_pre;
     std::pair<Ref<CCRenderTexture>, Ref<CCRenderTexture>> m_extra;
     float m_alpha = 0.f;
+    CCPoint m_acc = {0.f, 0.85f}; float m_accB = 0.6f;
+    ccColor3B m_accent = {0, 217, 153}, m_tint = {13, 20, 28};
 
     static ShaderSprite* create(CCTexture2D* tex, CCGLProgram* prog) {
         auto s = new ShaderSprite();
@@ -161,9 +165,15 @@ CCNode* create(CCSize panel, float radius) {
         p->setUniformLocationWith2f(loc(p, "u_half"), panel.width / 2, panel.height / 2);
         p->setUniformLocationWith1f(loc(p, "u_radius"), radius);
         p->setUniformLocationWith1f(loc(p, "u_alpha"), out->m_alpha);
+        p->setUniformLocationWith3f(loc(p, "u_accent"), out->m_accent.r / 255.f, out->m_accent.g / 255.f, out->m_accent.b / 255.f);
+        p->setUniformLocationWith3f(loc(p, "u_tint"), out->m_tint.r / 255.f, out->m_tint.g / 255.f, out->m_tint.b / 255.f);
     };
     out->m_extra = std::make_pair(Ref<CCRenderTexture>(a), Ref<CCRenderTexture>(b));
     return out;
+}
+
+void setTheme(CCNode* glass, ccColor3B accent, ccColor3B tint) {
+    if (auto s = static_cast<ShaderSprite*>(glass)) { s->m_accent = accent; s->m_tint = tint; }
 }
 
 void setAlpha(CCNode* glass, float alpha) {
