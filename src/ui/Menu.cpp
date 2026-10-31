@@ -3,11 +3,11 @@
 #include "Draw.hpp"
 #include "../core/State.hpp"
 #include "../vis/Vis.hpp"
-#include <Geode/modify/PauseLayer.hpp>
 #if !defined(GEODE_IS_IOS)
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
 #endif
 #include <memory>
+#include <map>
 
 using namespace geode::prelude;
 using namespace xyz;
@@ -108,6 +108,71 @@ static CCMenuItemSpriteExtra* makeChip(ccColor3B col, bool sel, std::function<vo
     else disc(d, {12, 12}, 10.f, {0, 0, 0, 0}, 1.f, {1, 1, 1, 0.3f}, 28);
     node->addChild(d);
     return CCMenuItemExt::createSpriteExtra(node, [cb](auto) { cb(); });
+}
+
+static std::string helpText(std::string const& k) {
+    static std::map<std::string, std::string> const H = {
+        {"Frame Stepper", "Freezes the game and only advances when you press Step (menu button or F7)."},
+        {"Noclip", "Stops the player from dying."},
+        {"Frame Fixes", "Records the player's position, rotation and Y velocity every tick so macros stay accurate. Makes macro files larger."},
+        {"Ignore Level Check", "Lets you play a macro on a level other than the one it was recorded on."},
+        {"Block Inputs In Playback", "Ignores your own taps while a macro is playing."},
+        {"Autosave While Recording", "Saves an 'autosave' macro every few seconds while you record."},
+        {"Interval (s)", "How many seconds pass between autosaves."},
+        {"Auto Exit On Finish", "Leaves the level when a macro finishes playing."},
+        {"TPS Bypass", "Runs the physics at a custom ticks-per-second. Higher is more accurate. Macros replay at the TPS they were recorded at."},
+        {"TPS", "The ticks-per-second the physics runs at. 240 is normal."},
+        {"Frame Budget (ms)", "The most time spent on physics each frame. If it runs out, the game slows down instead of freezing."},
+        {"Speedhack", "Changes how fast the whole game runs."},
+        {"Speed", "Game speed multiplier. 1.00 is normal."},
+        {"Speedhack Audio", "Changes the music pitch together with the speed."},
+        {"SSB Fix (song sync)", "While the scroll speed bug is happening, changes the song speed so it stays in sync with the level."},
+        {"Invert Correction", "Flips the direction of the song correction. Turn on if the song drifts further off instead of back."},
+        {"Legacy Ship Weight (2.1)", "Makes the upside-down ship heavier, like in 2.1 and earlier."},
+        {"Extra Weight (%)", "How much extra weight the upside-down ship gets. Starts at 6."},
+        {"Show Hitboxes", "Draws the hitboxes of the player and the level's objects."},
+        {"Hitbox Trail", "Draws the player's hitboxes from the last few moments."},
+        {"Trail Length", "How many past ticks the hitbox trail keeps."},
+        {"Show Trajectory", "Previews where the player will go if you hold or release right now."},
+        {"Length", "How many ticks ahead the preview looks."},
+        {"Layout Mode (reload level)", "Strips decoration so only gameplay objects show. Takes effect when the level loads again."},
+        {"Player", "Shows the player's hitboxes."},
+        {"Solid / Hazard", "Shows the hitboxes of blocks and spikes."},
+        {"Special / Rotated", "Shows portals, orbs and pads, and rotated hitboxes."},
+        {"Prevent Death", "Freezes the game one moment before a predicted death so you can change your input."},
+        {"Lookahead Ticks", "How many ticks ahead Prevent Death looks for a death."},
+        {"Maintain Gravity", "Flips your hold while upside down so wave and ship controls stay the same."},
+        {"Mirror Inputs", "Player 2 copies Player 1's inputs."},
+        {"Mirror Inverted", "Player 2 does the opposite of Player 1."},
+        {"No Mirror Portals", "Mirror portals stop flipping the screen."},
+        {"Autoclicker P1", "Clicks for Player 1 automatically using the hold and release ticks in its settings."},
+        {"Autoclicker P2", "Clicks for Player 2 automatically using the hold and release ticks in its settings."},
+        {"Hold Ticks", "How many ticks each click is held."},
+        {"Release Ticks", "How many ticks pass between clicks."},
+        {"Clicks Per Hold", "Extra clicks added each time the button is pressed."},
+        {"Labels Enabled", "Shows or hides every on-screen label."},
+        {"Enabled", "Shows or hides this label."},
+        {"Anchor", "Which corner of the screen the label sits in."},
+        {"Font", "Arial or the game's own font."},
+        {"Size", "How large the label is."},
+        {"Opacity", "How see-through the label is."},
+        {"Red", "Red amount, from 0 to 255."}, {"Green", "Green amount, from 0 to 255."}, {"Blue", "Blue amount, from 0 to 255."},
+        {"Button In Levels", "Shows the floating button while you play. Turn off to hide it until you pause."},
+    };
+    auto it = H.find(k);
+    return it == H.end() ? std::string() : it->second;
+}
+
+static CCMenuItemSpriteExtra* makeHelp(std::string title, std::string text) {
+    auto node = CCNode::create();
+    node->setContentSize({16, 16});
+    auto d = CCDrawNode::create();
+    disc(d, {8, 8}, 7.5f, ccc4f(1, 1, 1, 0.07f), 1.f, ccc4f(1, 1, 1, 0.3f), 20);
+    node->addChild(d);
+    auto l = mkLabel("?");
+    l->setScale(.34f); l->setOpacity(110); l->setPosition({8, 8});
+    node->addChild(l);
+    return CCMenuItemExt::createSpriteExtra(node, [title, text](auto) { FLAlertLayer::create(title.c_str(), text, "OK")->show(); });
 }
 
 XyzMenu* XyzMenu::create() {
@@ -264,6 +329,7 @@ struct Row {
     std::string label;
     bool on = false;
     std::string gear;
+    std::string help;
     std::function<void(bool)> setb;
     std::function<std::string()> get;
     std::function<void(int)> step;
@@ -279,8 +345,8 @@ void XyzMenu::rebuild(bool animate) {
     std::vector<Row> rows;
 
     auto sec = [&](std::string t) { Row x; x.k = Row::Section; x.label = std::move(t); rows.push_back(std::move(x)); };
-    auto tog = [&](std::string t, bool v, std::function<void(bool)> f, std::string gear = "") { Row x; x.k = Row::Toggle; x.label = std::move(t); x.on = v; x.setb = std::move(f); x.gear = std::move(gear); rows.push_back(std::move(x)); };
-    auto num = [&](std::string t, std::function<std::string()> g, std::function<void(int)> s) { Row x; x.k = Row::Num; x.label = std::move(t); x.get = std::move(g); x.step = std::move(s); rows.push_back(std::move(x)); };
+    auto tog = [&](std::string t, bool v, std::function<void(bool)> f, std::string gear = "") { Row x; x.k = Row::Toggle; x.label = std::move(t); x.on = v; x.setb = std::move(f); x.gear = std::move(gear); x.help = helpText(x.label); rows.push_back(std::move(x)); };
+    auto num = [&](std::string t, std::function<std::string()> g, std::function<void(int)> s) { Row x; x.k = Row::Num; x.label = std::move(t); x.get = std::move(g); x.step = std::move(s); x.help = helpText(x.label); rows.push_back(std::move(x)); };
     auto txt = [&](std::string t) { Row x; x.k = Row::Text; x.label = std::move(t); rows.push_back(std::move(x)); };
     auto pills = [&](std::vector<std::pair<std::string, std::function<void()>>> p) { Row x; x.k = Row::Pills; x.pills = std::move(p); rows.push_back(std::move(x)); };
     auto custom = [&](std::function<void(CCMenu*, float, float)> f) { Row x; x.k = Row::Custom; x.custom = std::move(f); rows.push_back(std::move(x)); };
@@ -438,12 +504,16 @@ void XyzMenu::rebuild(bool animate) {
         for (size_t i = 0; i < labels::count(); ++i)
             custom([this, i](CCMenu* menu, float y, float w) {
                 auto l = mkLabel(labels::name(i).c_str());
-                l->limitLabelWidth(w - 120.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y});
+                l->limitLabelWidth(w - 150.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y});
                 menu->addChild(l);
+                if (!labels::help(i).empty()) {
+                    auto hb = makeHelp(labels::name(i), labels::help(i));
+                    hb->setPosition({12.f + l->getScaledContentSize().width + 13.f, y}); menu->addChild(hb);
+                }
                 auto sw = makeSwitch(labels::cfg(i).on, [i](bool v) { labels::cfg(i).on = v; labels::save(i); });
                 sw->setPosition({w - 32, y}); menu->addChild(sw);
                 auto g = makeGear([this, i] { m_sel = (int)i; m_sub = "label"; this->later(true); });
-                g->setPosition({w - 66, y}); menu->addChild(g);
+                g->setPosition({w - 76, y}); menu->addChild(g);
             });
         break;
     case 5:
@@ -459,6 +529,8 @@ void XyzMenu::rebuild(bool animate) {
         tog("Autoclicker P2", c.acOn[1], [](bool v) { cfg().acOn[1] = v; saveCfg(); }, "ac1");
         break;
     default: {
+        sec("INTERFACE");
+        tog("Button In Levels", c.btnInLevel, [](bool v) { cfg().btnInLevel = v; saveCfg(); });
         sec("PRESETS");
         custom([this](CCMenu* menu, float y, float w) {
             int n = (int)(sizeof(PRESETS) / sizeof(PRESETS[0]));
@@ -514,21 +586,29 @@ void XyzMenu::rebuild(bool animate) {
             switch (rw.k) {
             case Row::Toggle: {
                 auto l = mkLabel(rw.label.c_str());
-                l->limitLabelWidth(cw - (rw.gear.empty() ? 90.f : 120.f), .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
+                l->limitLabelWidth(cw - (rw.gear.empty() ? 120.f : 150.f), .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
                 rm->addChild(l);
+                if (!rw.help.empty()) {
+                    auto hb = makeHelp(rw.label, rw.help);
+                    hb->setPosition({12.f + l->getScaledContentSize().width + 13.f, 0}); rm->addChild(hb);
+                }
                 auto sw = makeSwitch(rw.on, rw.setb);
                 sw->setPosition({cw - 32, 0}); rm->addChild(sw);
                 if (!rw.gear.empty()) {
                     auto key = rw.gear;
                     auto g = makeGear([this, key] { m_sub = key; this->later(true); });
-                    g->setPosition({cw - 66, 0}); rm->addChild(g);
+                    g->setPosition({cw - 76, 0}); rm->addChild(g);
                 }
                 break;
             }
             case Row::Num: {
                 auto l = mkLabel(rw.label.c_str());
-                l->limitLabelWidth(cw - 190.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
+                l->limitLabelWidth(cw - 215.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
                 rm->addChild(l);
+                if (!rw.help.empty()) {
+                    auto hb = makeHelp(rw.label, rw.help);
+                    hb->setPosition({12.f + l->getScaledContentSize().width + 13.f, 0}); rm->addChild(hb);
+                }
                 auto v = mkLabel(rw.get().c_str());
                 v->setColor(to3(accL()));
                 v->setScale(.42f); v->setPosition({cw - 74, 0});
@@ -577,19 +657,6 @@ void XyzMenu::rebuild(bool animate) {
     }
     m_scroll->moveToTop();
 }
-
-class $modify(XyzPause, PauseLayer) {
-    void customSetup() {
-        PauseLayer::customSetup();
-        auto menu = this->getChildByID("left-button-menu");
-        if (!menu) return;
-        auto spr = ButtonSprite::create("XYZ", fontFile().c_str(), "GJ_button_04.png", .6f);
-        auto b = CCMenuItemExt::createSpriteExtra(spr, [](auto) { XyzMenu::toggle(); });
-        b->setID("xyz-button"_spr);
-        menu->addChild(b);
-        menu->updateLayout();
-    }
-};
 
 #if !defined(GEODE_IS_IOS)
 class $modify(XyzKeys, CCKeyboardDispatcher) {

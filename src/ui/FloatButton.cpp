@@ -84,10 +84,12 @@ public:
     }
 
     void tick(float) {
-        bool on = Mod::get()->getSettingValue<bool>("floating-button");
+        auto& c = xyz::cfg();
+        auto pl0 = PlayLayer::get();
+        bool inLevel = pl0 && !pl0->m_isPaused;
+        bool on = Mod::get()->getSettingValue<bool>("floating-button") && (c.btnInLevel || !inLevel);
         this->setVisible(on);
         if (!on) return;
-        auto& c = xyz::cfg();
         if (c.accR != m_drawnR || c.accG != m_drawnG || c.accB != m_drawnB) this->redraw();
         auto pl = PlayLayer::get();
         float target = (pl && !pl->m_isPaused) ? 0.7f : 1.f;

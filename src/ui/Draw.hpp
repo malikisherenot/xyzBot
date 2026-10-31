@@ -5,17 +5,22 @@
 // Shared drawing helpers. CCDrawNode blends premultiplied, so every color is premultiplied here,
 // and polygons are de-duplicated (zero-length edges make the border shader spike).
 namespace xyz::draw {
-// Arial Italic bitmap font shipped in resources/. Falls back to GD's bigFont if the resource is missing.
+// Arial Italic is compiled by Geode from resources/arial-italic.ttf (mod.json "fonts"). If it cannot be
+// created, everything falls back to GD's bigFont so the UI never breaks.
+inline bool& fontBad() { static bool b = false; return b; }
 inline std::string const& fontFile() {
-    static std::string f = [] {
-        using namespace geode::prelude;
-        std::string p = "arial-italic.fnt"_spr;
-        return CCFileUtils::get()->isFileExist(p.c_str()) ? p : std::string("bigFont.fnt");
-    }();
+    static std::string f = [] { using namespace geode::prelude; return std::string("arial-italic.fnt"_spr); }();
     return f;
 }
-inline cocos2d::CCLabelBMFont* mkLabel(char const* text) { return cocos2d::CCLabelBMFont::create(text, fontFile().c_str()); }
-inline std::string fontOf(int style) { return style == 0 ? std::string("bigFont.fnt") : fontFile(); }
+inline std::string fontOf(int style) { return (style == 0 || fontBad()) ? std::string("bigFont.fnt") : fontFile(); }
+inline cocos2d::CCLabelBMFont* mkLabelStyle(char const* text, int style) {
+    if (style != 0 && !fontBad()) {
+        if (auto l = cocos2d::CCLabelBMFont::create(text, fontFile().c_str())) return l;
+        fontBad() = true;
+    }
+    return cocos2d::CCLabelBMFont::create(text, "bigFont.fnt");
+}
+inline cocos2d::CCLabelBMFont* mkLabel(char const* text) { return mkLabelStyle(text, 1); }
 
 inline cocos2d::ccColor4F pm(cocos2d::ccColor4F c) { return {c.r * c.a, c.g * c.a, c.b * c.a, c.a}; }
 
