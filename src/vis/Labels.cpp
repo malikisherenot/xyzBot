@@ -122,6 +122,13 @@ std::vector<Def>& defs() {
         }
         return fmt::format("Ticks Since Last Input: {}", r.tick - in.back().tick);
     });
+    add("ssb_factor", "Scroll Speed Bug Factor", [](auto) { return fmt::format("SSB Factor: {:.6f}", ssbFactor()); });
+    add("ssb_event", "Scroll Speed Bug Event", [](CCLabelBMFont* l) {
+        auto& r = rt();
+        l->setColor(r.ssbActive ? ccColor3B{255, 160, 80} : ccColor3B{255, 255, 255});
+        if (r.ssbActive) return fmt::format("SSB Event: ACTIVE ({:.6f}) | Count: {}", r.ssbLast, r.ssbEvents);
+        return fmt::format("SSB Event: None | Count: {}", r.ssbEvents);
+    });
     add("frame_budget", "Frame Budget", [](auto) { return fmt::format("Budget: {:.0f} ms", xyz::cfg().budgetMs); });
     return d;
 }
