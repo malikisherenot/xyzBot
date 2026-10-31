@@ -1,4 +1,5 @@
 #include "Vis.hpp"
+#include <map>
 #include "../core/State.hpp"
 #include "../ui/Draw.hpp"
 #include <Geode/binding/RingObject.hpp>
@@ -13,6 +14,7 @@ struct Def {
     std::function<std::string(CCLabelBMFont*)> fn;
     Cfg c;
     CCLabelBMFont* node = nullptr;
+    std::string help;
 };
 CCNode* g_ui = nullptr;
 std::vector<Def>& defs();
@@ -47,7 +49,7 @@ std::vector<Def>& defs() {
         x.c.r = m->getSavedValue<int>(k + "_cr", 255); x.c.g = m->getSavedValue<int>(k + "_cg", 255); x.c.b = m->getSavedValue<int>(k + "_cb", 255);
         d.push_back(std::move(x));
     };
-    auto PL = [] { return PlayLayer::get(); };
+    auto PL = [] { return activeLayer(); };
     add("tick", "Tick", [](auto) { return fmt::format("Tick: {}", rt().tick); });
     add("game_tick", "Internal Game Tick", [=](auto) { return fmt::format("Game tick: {}", PL()->m_gameState.m_currentProgress); });
     add("tps", "TPS", [](auto) { return fmt::format("TPS: {}", (int)curTps()); });
@@ -131,7 +133,30 @@ std::vector<Def>& defs() {
         if (r.ssbActive) return fmt::format("SSB Event: ACTIVE ({:.6f}) | Count: {}", r.ssbLast, r.ssbEvents);
         return fmt::format("SSB Event: None | Count: {}", r.ssbEvents);
     });
+    add("start_pos", "Start Position", [](auto) { return fmt::format("Start Pos: x {:.2f}", rt().startX); });
     add("frame_budget", "Frame Budget", [](auto) { return fmt::format("Budget: {:.0f} ms", xyz::cfg().budgetMs); });
+    static std::map<std::string, std::string> const H = {
+        {"tick", "Ticks since the attempt started, as the bot counts them."},
+        {"game_tick", "The game's own internal step counter."},
+        {"tps", "Current physics ticks per second."},
+        {"player_x", "Player X position."}, {"player_y", "Player Y position."},
+        {"player_xvel", "Player horizontal velocity."}, {"player_yvel", "Player vertical velocity."},
+        {"player_rot", "Player rotation in degrees."}, {"player_speed", "Current speed multiplier of the player."},
+        {"player_grav", "Whether gravity is normal or flipped."}, {"player_alive", "Whether the player is alive or dead."},
+        {"checkpoints", "Number of practice checkpoints placed."}, {"level_time", "Time since the attempt started."},
+        {"time_warp", "Current time warp multiplier."}, {"bot_state", "Whether the bot is idle, recording or playing."},
+        {"random_state", "Current state of the game's random number generator."},
+        {"action_index", "Current input number out of the macro's total inputs."},
+        {"prevent_death", "Shows whether Prevent Death is armed or has frozen the game."},
+        {"touching_orbs", "Which orbs the player is currently touching."},
+        {"cps", "Clicks per second over the last second."}, {"max_cps", "Highest clicks per second this attempt."},
+        {"last_input", "Ticks since the last input in the macro."},
+        {"start_pos", "X position this attempt started from (StartPos or level start)."},
+        {"ssb_factor", "Scroll speed bug multiplier. 1 means the bug is not happening."},
+        {"ssb_event", "Shows when the scroll speed bug happens and how many times it has."},
+        {"frame_budget", "Time the bot may spend on physics each frame."},
+    };
+    for (auto& x : d) if (auto it = H.find(x.id); it != H.end()) x.help = it->second;
     return d;
 }
 }
@@ -140,6 +165,7 @@ size_t count() { return defs().size(); }
 std::string const& id(size_t i) { return defs()[i].id; }
 std::string const& name(size_t i) { return defs()[i].name; }
 Cfg& cfg(size_t i) { return defs()[i].c; }
+std::string const& help(size_t i) { return defs()[i].help; }
 void invalidate() { g_refresh = true; }
 void setAllColor(int r, int g, int b) {
     for (size_t i = 0; i < defs().size(); ++i) { auto& c = defs()[i].c; c.r = r; c.g = g; c.b = b; save(i); }
@@ -155,11 +181,14 @@ void save(size_t i) {
 }
 
 namespace xyz::vis {
-void updateLabels(PlayLayer* pl) {
+void updateLabels(GJBaseGameLayer* pl) {
     using namespace labels;
-    if (!pl || !pl->m_uiLayer) return;
+    if (!pl) return;
+    CCNode* ui = nullptr;
+    if (auto ply = typeinfo_cast<PlayLayer*>(pl)) ui = ply->m_uiLayer;
+    else ui = CCDirector::get()->getRunningScene();
+    if (!ui) return;
     auto& d = defs();
-    auto ui = pl->m_uiLayer;
     if (g_ui != ui) { g_ui = ui; for (auto& l : d) l.node = nullptr; g_refresh = true; }
     bool refresh = g_refresh;
     float h[4] = {0, 0, 0, 0};
@@ -168,7 +197,7 @@ void updateLabels(PlayLayer* pl) {
         bool show = xyz::cfg().labels && l.c.on;
         if (!l.node) {
             if (!show) continue;
-            l.node = CCLabelBMFont::create("...", xyz::draw::fontOf(l.c.font).c_str());
+            l.node = xyz::draw::mkLabelStyle("...", l.c.font);
             l.node->setID(fmt::format("{}/label.{}", Mod::get()->getID(), l.id));
             ui->addChild(l.node, 100000);
             refresh = true;
@@ -199,5 +228,11 @@ void updateLabels(PlayLayer* pl) {
         }
     }
     g_refresh = false;
+}
+}
+
+namespace xyz::vis {
+void hideLabels() {
+    for (auto& l : labels::defs()) if (l.node) l.node->setVisible(false);
 }
 }

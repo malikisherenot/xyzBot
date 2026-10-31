@@ -33,12 +33,14 @@ void drawPlayer(CCDrawNode* n, PlayerObject* p, float w) {
     if (!p) return;
     if (c.hbRotated) obox(n, p, col(1.f, 0.6f, 0.f), w);
     if (c.hbPlayer) {
+        float rad = p->getObjectRect().size.width / 2.f;
+        if (rad > 0.f) n->drawCircle(p->getPosition(), rad, {0, 0, 0, 0}, w, col(1, 0.9f, 0), (unsigned)std::max(rad, 8.f) * 2);
         poly(n, p->getObjectRect(), col(1, 0, 0, 0.15f), w, col(1, 0, 0));
         poly(n, p->getObjectRect(0.3f, 0.3f), col(0, 0.5f, 1, 0.15f), w, col(0, 0.5f, 1));
     }
 }
 
-void drawHitboxes(PlayLayer* pl) {
+void drawHitboxes(GJBaseGameLayer* pl) {
     auto& c = cfg();
     g_hb->clear();
     float w = 0.6f / std::max(0.1f, (float)pl->m_gameState.m_cameraZoom);
@@ -60,6 +62,16 @@ void drawHitboxes(PlayLayer* pl) {
             else if (t == GameObjectType::Solid || t == GameObjectType::Slope || t == GameObjectType::Breakable) { cl = col(0.2f, 0.45f, 1); on = c.hbSolid; }
             else { cl = col(0.1f, 1, 0.3f); on = c.hbSpecial; }
             if (!on) continue;
+            if (t == GameObjectType::Hazard || t == GameObjectType::AnimatedHazard) {
+                auto ply = typeinfo_cast<PlayLayer*>(pl);
+                if (!o->m_isActivated || (ply && o == ply->m_anticheatSpike)) continue;
+                float rad = o->m_objectRadius * std::max(o->m_scaleX, o->m_scaleY);
+                if (rad > 0.f) {
+                    auto segs = (unsigned)(std::max(rad, 8.f) * 2.f * std::sqrt(std::max(0.1f, (float)pl->m_gameState.m_cameraZoom)));
+                    g_hb->drawCircle(o->getPosition(), rad, {cl.r, cl.g, cl.b, 0.12f}, w, cl, segs);
+                    continue;
+                }
+            }
             if (c.hbRotated && o->getRotation() != 0.f) obox(g_hb, o, cl, w);
             else poly(g_hb, r, {cl.r, cl.g, cl.b, 0.12f}, w, cl);
         }
@@ -108,7 +120,7 @@ void copyState(PlayerObject* f, PlayerObject* p) {
     f->updatePlayerScale();
 }
 
-bool run(PlayLayer* pl, PlayerObject* fake, PlayerObject* real, bool hold, int len, bool draw, bool curHeld = false) {
+bool run(GJBaseGameLayer* pl, PlayerObject* fake, PlayerObject* real, bool hold, int len, bool draw, bool curHeld = false) {
     auto& r = rt();
     float delta = std::min(0.25f, 60.f / curTps());
     copyState(fake, real);
@@ -141,7 +153,7 @@ bool run(PlayLayer* pl, PlayerObject* fake, PlayerObject* real, bool hold, int l
     return false;
 }
 
-void drawTraj(PlayLayer* pl) {
+void drawTraj(GJBaseGameLayer* pl) {
     auto& r = rt();
     g_tr->clear();
     if (!g_fake[0] || !pl->m_player1 || pl->m_player1->m_isDead) return;
@@ -155,7 +167,7 @@ void drawTraj(PlayLayer* pl) {
 }
 }
 
-void attach(PlayLayer* pl) {
+void attach(GJBaseGameLayer* pl) {
     g_hb = CCDrawNode::create(); g_hb->retain();
     g_tr = CCDrawNode::create(); g_tr->retain();
     pl->m_objectLayer->addChild(g_hb, 1000);
@@ -175,7 +187,7 @@ void detach() {
     CC_SAFE_RELEASE(g_tr); g_tr = nullptr;
 }
 
-void sampleTrail(PlayLayer* pl) {
+void sampleTrail(GJBaseGameLayer* pl) {
     auto& c = cfg();
     PlayerObject* ps[2] = {pl->m_player1, pl->m_gameState.m_isDualMode ? pl->m_player2 : nullptr};
     for (int i = 0; i < 2; ++i) {
@@ -185,7 +197,7 @@ void sampleTrail(PlayLayer* pl) {
     }
 }
 
-bool predictDeath(PlayLayer* pl, int look) {
+bool predictDeath(GJBaseGameLayer* pl, int look) {
     auto& r = rt();
     if (!g_fake[0] || !pl->m_player1) return false;
     r.simulating = true;
@@ -196,7 +208,7 @@ bool predictDeath(PlayLayer* pl, int look) {
     return dead;
 }
 
-void refresh(PlayLayer* pl) {
+void refresh(GJBaseGameLayer* pl) {
     auto& c = cfg();
     updateLabels(pl);
     if (!g_hb || !g_tr) return;
