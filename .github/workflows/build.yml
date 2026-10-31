@@ -1,5 +1,14 @@
 name: Build
-on: [workflow_dispatch, push]
+
+# Manual only: Actions tab -> Build -> Run workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      ios:
+        description: "Also build iOS (experimental)"
+        type: boolean
+        default: false
+
 jobs:
   build:
     strategy:
@@ -15,10 +24,13 @@ jobs:
     runs-on: ${{ matrix.config.os }}
     steps:
       - uses: actions/checkout@v4
+        if: ${{ matrix.config.name != 'iOS' || inputs.ios }}
       - uses: geode-sdk/build-geode-mod@main
+        if: ${{ matrix.config.name != 'iOS' || inputs.ios }}
         with:
           combine: true
           target: ${{ matrix.config.target }}
+
   package:
     needs: build
     runs-on: ubuntu-latest
