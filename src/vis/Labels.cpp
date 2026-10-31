@@ -206,9 +206,9 @@ void updateLabels(GJBaseGameLayer* pl) {
         n->setVisible(show);
         if (!show) continue;
         if (refresh) {
-            n->setFntFile(xyz::draw::fontOf(l.c.font).c_str());
+            xyz::draw::setStyle(n, l.c.font);
             n->setOpacity((GLubyte)(l.c.opacity * 255.f));
-            n->setScale(l.c.scale);
+            xyz::draw::sc(n, l.c.scale);
         }
         n->setColor({(GLubyte)l.c.r, (GLubyte)l.c.g, (GLubyte)l.c.b});
         auto str = l.fn(n);
