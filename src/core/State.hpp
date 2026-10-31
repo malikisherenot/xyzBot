@@ -49,6 +49,9 @@ struct Cfg {
     bool ssbFix = false, ssbInvert = false;
     bool legacyShip = false;
     int legacyShipPct = 6;
+    int themeIdx = 0;
+    int accR = 0, accG = 217, accB = 153;
+    int tintR = 13, tintG = 20, tintB = 28;
     bool acOn[2] = {false, false};
     int acHold[2] = {4, 4}, acRel[2] = {4, 4}, acClicks[2] = {1, 1};
 };
