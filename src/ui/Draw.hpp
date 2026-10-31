@@ -8,6 +8,7 @@
 namespace xyz::draw {
 // Arial Italic is compiled by Geode from resources/arial-italic.ttf (mod.json "fonts"). If it cannot be
 // created, everything falls back to GD's bigFont so the UI never breaks.
+constexpr int ARIAL_TAG = 0x5A7;
 inline bool& fontBad() { static bool b = false; return b; }
 inline std::string const& fontFile() {
     static std::string f = [] { using namespace geode::prelude; return std::string("arial-italic.fnt"_spr); }();
@@ -25,7 +26,6 @@ inline cocos2d::CCLabelBMFont* mkLabel(char const* text) { return mkLabelStyle(t
 
 // Arial is tagged so the size matches GD's own font: the ratio of the two fonts' line heights is measured
 // once at runtime (whatever size Geode compiled the font at), then applied to every size set below.
-constexpr int ARIAL_TAG = 0x5A7;
 inline float fontK() {
     static float k = 0.f;
     if (k > 0.f) return k;
