@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.7.0
+- Prevent Death and trajectory ignore the hidden spike at the start of every level
+- On-screen frame stepper controls (Step, +N, Hold, Run) for touch devices, with a settings page
+
+## v1.6.2
+- Macros are saved under the level name
+- Smaller file size text under macro names
+- Menu font switch (GD old / Arial new) in the Theme tab
+
 ## v1.6.1
 - Fixed build error (ARIAL_TAG declared too late in Draw.hpp)
 - Arial text is now sized to match GD's font automatically (fixes tiny text)
