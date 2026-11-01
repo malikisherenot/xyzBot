@@ -28,6 +28,30 @@ std::string macroFileName() {
 static size_t hi(int button, bool p2) { return (p2 ? 3 : 0) + std::clamp(button, 1, 3) - 1; }
 static bool takeover() { auto& c = cfg(); return c.maintainGravity || c.mirror || c.acOn[0] || c.acOn[1]; }
 
+static bool noclipFor(PlayerObject* p, GJBaseGameLayer* gl) {
+    auto& c = cfg();
+    if (!c.noclip) return false;
+    if (p == gl->m_player1) return c.noclipP[0];
+    if (p == gl->m_player2) return c.noclipP[1];
+    return true;
+}
+
+// Touching a green dash orb or a (usable) black orb: release first so the press that follows triggers it.
+static bool wantsPreRelease(PlayerObject* pl) {
+    auto& c = cfg();
+    if (!pl || !pl->m_touchingRings) return false;
+    for (auto ring : CCArrayExt<RingObject*>(pl->m_touchingRings)) {
+        if (!ring) continue;
+        auto t = ring->m_objectType;
+        if (t == GameObjectType::DashRing && c.clickDash) return true;
+        if (t == GameObjectType::DropRing) {
+            bool falling = (pl->m_yVelocity <= 0 && !pl->m_isUpsideDown) || (pl->m_yVelocity >= 0 && pl->m_isUpsideDown);
+            if (c.clickBlack || (c.blackUfo && falling)) return true;
+        }
+    }
+    return false;
+}
+
 // The layer the bot drives: the level, or the editor while it is playtesting.
 GJBaseGameLayer* activeLayer() {
     if (auto pl = PlayLayer::get()) return pl;
@@ -91,6 +115,8 @@ static void press(GJBaseGameLayer* gl, bool down, int p) {
     r.internal = false;
 }
 
+void pressButton(GJBaseGameLayer* gl, bool down, int p) { press(gl, down, p); }
+
 static void acStep(GJBaseGameLayer* gl, int p) {
     auto& r = rt(); auto& c = cfg(); auto& a = r.ac[p];
     if (!c.acOn[p]) { r.acHeld[p] = false; a = Ac{}; return; }
@@ -99,6 +125,12 @@ static void acStep(GJBaseGameLayer* gl, int p) {
     uint64_t nxt = a.last + (a.clicked ? c.acHold[p] : c.acRel[p]);
     if (tick >= nxt || a.last == UINT64_MAX) {
         a.last = tick;
+        if (c.acSwift[p]) {
+            // swift mode: a click is a press and release in the same tick
+            computeWant();
+            press(gl, true, p); press(gl, false, p);
+            return;
+        }
         if (!a.clicked) {
             r.acHeld[p] = true; a.clicked = true;
             computeWant();
@@ -254,6 +286,7 @@ class $modify(XyzGL, GJBaseGameLayer) {
         bool p2 = !p1;
         if (r.mode == Mode::Play && !r.feeding && !r.resetting && c.blockInputs) return;
         bool ext = !r.internal && !r.feeding && !r.resetting;
+        if (ext && button == 1 && !down && c.autoSwift && r.mode != Mode::Play && !takeover()) return;   // auto swift: releases are generated
         if (ext && button == 1) {
             r.userHeld[p2] = down;
             if (down) cpsPush(p2);
@@ -263,8 +296,13 @@ class $modify(XyzGL, GJBaseGameLayer) {
             r.held[hi(button, p2)] = down;
             r.rec.inputs.push_back({r.tick, (uint8_t)button, down, p2});
         }
+        bool helper = ext && button == 1 && down && r.mode != Mode::Play;
+        if (helper && wantsPreRelease(p1 ? m_player1 : m_player2)) press(this, false, p2);
         if (button == 1) r.gameHeld[p2] = down;
         GJBaseGameLayer::handleButton(down, button, p1);
+        if (helper && c.extraClick)
+            for (int k = 0; k < std::clamp(c.extraAmt, 1, 10); ++k) { press(this, false, p2); press(this, true, p2); }
+        if (helper && c.autoSwift) press(this, false, p2);
     }
 
     void processCommands(float dt, bool half, bool last) {
@@ -274,6 +312,7 @@ class $modify(XyzGL, GJBaseGameLayer) {
         }
         if (!half) {
             if (!PlayLayer::get()) editorRespawnCheck(this);
+            if (rt().mode != Mode::Play) assistTick(this);
             drive(this); feed(this);
         }
         GJBaseGameLayer::processCommands(dt, half, last);
@@ -303,6 +342,7 @@ class $modify(XyzPL, PlayLayer) {
         PlayLayer::resetLevel();
         r.resetting = false;
         if (!r.loadedCp) rewind();
+        flipOnReset();
     }
 
     void resetLevelFromStart() {
@@ -365,8 +405,9 @@ class $modify(XyzPL, PlayLayer) {
             r.simDead = true;
             return;
         }
-        if (cfg().noclip) return;
+        if (p && !p->m_isDead && o != m_anticheatSpike && noclipFor(p, this)) return;
         PlayLayer::destroyPlayer(p, o);
+        if (p) r.flipPlayer = p->m_isSecondPlayer ? 2 : 1;
         if (r.mode == Mode::Play && p && p->m_isDead && !m_isPracticeMode) stopAll(false);
     }
 
@@ -394,7 +435,7 @@ class $modify(XyzEditorLayer, LevelEditorLayer) {
     void destroyPlayer(PlayerObject* p, GameObject* o) {
         auto& r = rt();
         if (r.simulating) { r.simDead = true; return; }
-        if (cfg().noclip) return;
+        if (p && noclipFor(p, this)) return;
         LevelEditorLayer::destroyPlayer(p, o);
     }
 };

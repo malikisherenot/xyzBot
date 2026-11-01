@@ -51,6 +51,22 @@ struct Cfg {
     bool legacyShip = false;
     int legacyShipPct = 6;
     bool btnInLevel = true;
+    // ported from Scarlet Utils (own implementation)
+    bool noDeathEffect = false, noEffect = false, hideEndscreen = false, hideNewBest = false;
+    bool optStacked = false, restartFirst = false;
+    bool fadeLevel = false, fadeAudio = false;
+    float fadeLevelIn = 0.5f, fadeLevelOut = 1.0f, fadeAudioIn = 0.5f, fadeAudioOut = 1.0f;
+    bool clickDash = false, clickBlack = false, blackUfo = false, clickPads = false, clickGravPads = false;
+    bool autoSwift = false, extraClick = false;
+    int extraAmt = 1;
+    bool sFly = false, sFlyOn[2] = {true, true};
+    float sFlyThr[2] = {0.f, 0.f};
+    bool sUfo = false, sUfoOn[2] = {true, true};
+    float sUfoTarget[2] = {135.f, 135.f}, sUfoThr[2] = {0.f, 0.f};
+    bool flipDeath = false, flipP1 = true, flipP2 = true, flipBoth = false, flipSwift = false;
+    bool noclipP[2] = {true, true};
+    bool acSwift[2] = {false, false};
+    int layoutBg[3] = {160, 160, 160}, layoutGr[3] = {160, 160, 160};
     bool stepBar = true;
     int stepN = 10;
     int holdRate = 1;
@@ -92,12 +108,20 @@ struct Rt {
     std::array<bool, 6> seekHeld{};
     size_t cpCount = 0;
     double autosaveAcc = 0.0;
+    bool padClick[2] = {false, false};
+    bool clickedPad = false, optStart = false, optStop = false, optRing = false;
+    int flipPlayer = 0;
+    bool flipLogic[2] = {true, true}, flipPress[2] = {false, false}, flipSwiftNow[2] = {false, false};
     bool ssbActive = false;
     float ssbLast = 1.f;
     int ssbEvents = 0;
 };
 
 std::string macroFileName();
+void pressButton(GJBaseGameLayer* gl, bool down, int p);
+void assistTick(GJBaseGameLayer* gl);
+void flipOnReset();
+bool layoutOn();
 GJBaseGameLayer* activeLayer();
 bool isActive(GJBaseGameLayer* gl);
 void onEditorPlaytest(bool started);
