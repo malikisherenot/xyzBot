@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.8.0
+- Ported from Scarlet Utils (own implementation): Click Green Dash / Black Orbs, Easy Black Orb UFO, Click Jump / Gravity Pads
+- Auto Straight Fly, Auto Straight UFO, Auto Swift, Extra Clicks, Flip Input On Death
+- No Death Effect, No Effects, Hide Endscreen, Hide New Best, Stacked Orb Optimization, Restart First Frame
+- Level and audio fade in/out, layout mode background/ground colors
+- Noclip per player, swift autoclicker
+
 ## v1.7.0
 - Prevent Death and trajectory ignore the hidden spike at the start of every level
 - On-screen frame stepper controls (Step, +N, Hold, Run) for touch devices, with a settings page
