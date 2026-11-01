@@ -160,6 +160,41 @@ static std::string helpText(std::string const& k) {
         {"Size", "How large the label is."},
         {"Opacity", "How see-through the label is."},
         {"Red", "Red amount, from 0 to 255."}, {"Green", "Green amount, from 0 to 255."}, {"Blue", "Blue amount, from 0 to 255."},
+        {"No Death Effect", "Hides the player's death explosion."},
+        {"No Effects", "Stops most visual effects (circles, particles, shines, trigger flashes) from showing."},
+        {"Hide Endscreen", "Skips the end-of-level screen. Useful for recording."},
+        {"Hide New Best", "Hides the 'New Best' popup."},
+        {"Stacked Orb Optimization", "When several orbs are hit in a row, only the first one plays its effect."},
+        {"Restart First Frame", "Restarts the attempt once right after the level starts. Fixes levels that break on their first frame when recording."},
+        {"Level Fade In/Out", "Fades the level in from black at the start and out to black at the end. Made for recording."},
+        {"Audio Fade In/Out", "Fades the music in at the start and out at the end. Made for recording."},
+        {"Fade In (s)", "How many seconds the level takes to fade in."},
+        {"Fade Out (s)", "How many seconds the level takes to fade out."},
+        {"Audio Fade In (s)", "How many seconds the music takes to fade in."},
+        {"Audio Fade Out (s)", "How many seconds the music takes to fade out."},
+        {"Click Green Dash Orbs", "When you press while touching a green dash orb, it releases first so the orb always triggers."},
+        {"Click Black Orbs", "When you press while touching a black orb, it releases first so the orb always triggers."},
+        {"Easy Black Orb UFO", "Only clicks black orbs while the UFO is falling, so they do not push you the wrong way."},
+        {"Click Jump Pads", "Automatically taps when you hit a pink, yellow or red pad."},
+        {"Click Gravity Pads", "Automatically taps when you hit a blue pad."},
+        {"Auto Straight Fly", "Presses and releases for you to keep the ship level. It can drift in some spots."},
+        {"Auto Straight UFO", "Taps to hold the UFO near a set height."},
+        {"Auto Swift", "Every click becomes a quick tap: press and release at once."},
+        {"Extra Clicks", "Adds extra quick taps after each click you make."},
+        {"Extra Clicks Amount", "How many extra taps each click adds."},
+        {"Flip Input On Death", "After you die, flips the input of the player that died when the attempt restarts."},
+        {"Flip Player 1", "Flip the input when Player 1 dies."},
+        {"Flip Player 2", "Flip the input when Player 2 dies."},
+        {"Flip Both", "Flip both players' inputs whenever anyone dies."},
+        {"Flip Swift", "Flip with a quick tap instead of holding."},
+        {"Noclip Player 1", "Noclip applies to Player 1."},
+        {"Noclip Player 2", "Noclip applies to Player 2."},
+        {"Swift Clicks", "The autoclicker taps (press and release at once) instead of holding."},
+        {"Straight Fly P1", "Use Auto Straight Fly on Player 1."}, {"Straight Fly P2", "Use Auto Straight Fly on Player 2."},
+        {"Fly Threshold P1", "How much vertical speed is allowed before the ship is corrected."}, {"Fly Threshold P2", "How much vertical speed is allowed before the ship is corrected."},
+        {"Straight UFO P1", "Use Auto Straight UFO on Player 1."}, {"Straight UFO P2", "Use Auto Straight UFO on Player 2."},
+        {"UFO Target Y P1", "The height Player 1's UFO is held at."}, {"UFO Target Y P2", "The height Player 2's UFO is held at."},
+        {"UFO Threshold P1", "How far Player 1's UFO may drift from the target."}, {"UFO Threshold P2", "How far Player 2's UFO may drift from the target."},
         {"Menu Font", "Switches the menu text between GD's own font (old) and Arial (new)."},
         {"Button In Levels", "Shows the floating button while you play. Turn off to hide it until you pause."},
     };
@@ -396,6 +431,47 @@ void XyzMenu::rebuild(bool animate) {
             sec("SPEEDHACK SETTINGS");
             num("Speed", [] { return fmt::format("{:.2f}", cfg().speedVal); }, [](int d) { cfg().speedVal = std::clamp(cfg().speedVal + d * 0.1f, 0.05f, 100.f); saveCfg(); });
             tog("Speedhack Audio", c.speedAudio, [](bool v) { cfg().speedAudio = v; saveCfg(); });
+        } else if (sub == "noclip") {
+            sec("NOCLIP SETTINGS");
+            tog("Noclip Player 1", c.noclipP[0], [](bool v) { cfg().noclipP[0] = v; saveCfg(); });
+            tog("Noclip Player 2", c.noclipP[1], [](bool v) { cfg().noclipP[1] = v; saveCfg(); });
+        } else if (sub == "fade") {
+            sec("LEVEL FADE SETTINGS");
+            num("Fade In (s)", [] { return fmt::format("{:.1f}", cfg().fadeLevelIn); }, [](int d) { cfg().fadeLevelIn = std::clamp(cfg().fadeLevelIn + d * 0.1f, 0.f, 10.f); saveCfg(); });
+            num("Fade Out (s)", [] { return fmt::format("{:.1f}", cfg().fadeLevelOut); }, [](int d) { cfg().fadeLevelOut = std::clamp(cfg().fadeLevelOut + d * 0.1f, 0.f, 10.f); saveCfg(); });
+        } else if (sub == "afade") {
+            sec("AUDIO FADE SETTINGS");
+            num("Audio Fade In (s)", [] { return fmt::format("{:.1f}", cfg().fadeAudioIn); }, [](int d) { cfg().fadeAudioIn = std::clamp(cfg().fadeAudioIn + d * 0.1f, 0.f, 10.f); saveCfg(); });
+            num("Audio Fade Out (s)", [] { return fmt::format("{:.1f}", cfg().fadeAudioOut); }, [](int d) { cfg().fadeAudioOut = std::clamp(cfg().fadeAudioOut + d * 0.1f, 0.f, 10.f); saveCfg(); });
+        } else if (sub == "layout") {
+            sec("BACKGROUND COLOR");
+            colorRows(&c.layoutBg[0], &c.layoutBg[1], &c.layoutBg[2], [] { saveCfg(); });
+            sec("GROUND COLOR");
+            colorRows(&c.layoutGr[0], &c.layoutGr[1], &c.layoutGr[2], [] { saveCfg(); });
+        } else if (sub == "sfly") {
+            sec("AUTO STRAIGHT FLY SETTINGS");
+            for (int p = 0; p < 2; ++p) {
+                std::string n = p ? "P2" : "P1";
+                tog("Straight Fly " + n, c.sFlyOn[p], [p](bool v) { cfg().sFlyOn[p] = v; saveCfg(); });
+                num("Fly Threshold " + n, [p] { return fmt::format("{:.1f}", cfg().sFlyThr[p]); }, [p](int d) { cfg().sFlyThr[p] = std::clamp(cfg().sFlyThr[p] + d * 0.5f, 0.f, 50.f); saveCfg(); });
+            }
+        } else if (sub == "sufo") {
+            sec("AUTO STRAIGHT UFO SETTINGS");
+            for (int p = 0; p < 2; ++p) {
+                std::string n = p ? "P2" : "P1";
+                tog("Straight UFO " + n, c.sUfoOn[p], [p](bool v) { cfg().sUfoOn[p] = v; saveCfg(); });
+                num("UFO Target Y " + n, [p] { return fmt::format("{:.0f}", cfg().sUfoTarget[p]); }, [p](int d) { cfg().sUfoTarget[p] = std::clamp(cfg().sUfoTarget[p] + d * 15.f, 0.f, 3000.f); saveCfg(); });
+                num("UFO Threshold " + n, [p] { return fmt::format("{:.1f}", cfg().sUfoThr[p]); }, [p](int d) { cfg().sUfoThr[p] = std::clamp(cfg().sUfoThr[p] + d * 1.f, 0.f, 300.f); saveCfg(); });
+            }
+        } else if (sub == "extra") {
+            sec("EXTRA CLICKS SETTINGS");
+            num("Extra Clicks Amount", [] { return fmt::format("{}", cfg().extraAmt); }, [](int d) { cfg().extraAmt = std::clamp(cfg().extraAmt + d, 1, 10); saveCfg(); });
+        } else if (sub == "flip") {
+            sec("FLIP INPUT ON DEATH SETTINGS");
+            tog("Flip Player 1", c.flipP1, [](bool v) { cfg().flipP1 = v; saveCfg(); });
+            tog("Flip Player 2", c.flipP2, [](bool v) { cfg().flipP2 = v; saveCfg(); });
+            tog("Flip Both", c.flipBoth, [](bool v) { cfg().flipBoth = v; saveCfg(); });
+            tog("Flip Swift", c.flipSwift, [](bool v) { cfg().flipSwift = v; saveCfg(); });
         } else if (sub == "stepper") {
             sec("FRAME STEPPER SETTINGS");
             tog("On-Screen Controls", c.stepBar, [](bool v) { cfg().stepBar = v; saveCfg(); });
@@ -427,6 +503,7 @@ void XyzMenu::rebuild(bool animate) {
         } else if (sub == "ac0" || sub == "ac1") {
             int p = sub == "ac1";
             sec(p ? "AUTOCLICKER P2 SETTINGS" : "AUTOCLICKER P1 SETTINGS");
+            tog("Swift Clicks", c.acSwift[p], [p](bool v) { cfg().acSwift[p] = v; saveCfg(); });
             num("Hold Ticks", [p] { return fmt::format("{}", cfg().acHold[p]); }, [p](int d) { cfg().acHold[p] = std::clamp(cfg().acHold[p] + d, 1, 240); saveCfg(); });
             num("Release Ticks", [p] { return fmt::format("{}", cfg().acRel[p]); }, [p](int d) { cfg().acRel[p] = std::clamp(cfg().acRel[p] + d, 1, 240); saveCfg(); });
             num("Clicks Per Hold", [p] { return fmt::format("{}", cfg().acClicks[p]); }, [p](int d) { cfg().acClicks[p] = std::clamp(cfg().acClicks[p] + d, 1, 10); saveCfg(); });
@@ -452,7 +529,7 @@ void XyzMenu::rebuild(bool animate) {
         txt("State: " + st);
         pills({{"Record", [this] { startRecord(); this->later(false); }}, {"Stop", [this] { stopAll(true); this->later(false); }}, {"Step", [] { stepOnce(); }}});
         tog("Frame Stepper", c.stepper, [](bool v) { cfg().stepper = v; }, "stepper");
-        tog("Noclip", c.noclip, [](bool v) { cfg().noclip = v; saveCfg(); });
+        tog("Noclip", c.noclip, [](bool v) { cfg().noclip = v; saveCfg(); }, "noclip");
         sec("ACCURACY");
         tog("Frame Fixes", c.fixes, [](bool v) { cfg().fixes = v; saveCfg(); });
         tog("Ignore Level Check", c.ignoreLevel, [](bool v) { cfg().ignoreLevel = v; saveCfg(); });
@@ -479,7 +556,17 @@ void XyzMenu::rebuild(bool animate) {
         sec("TRAJECTORY");
         tog("Show Trajectory", c.traj, [](bool v) { cfg().traj = v; saveCfg(); }, "traj");
         sec("LEVEL");
-        tog("Layout Mode (reload level)", c.layout, [](bool v) { cfg().layout = v; saveCfg(); });
+        tog("Layout Mode (reload level)", c.layout, [](bool v) { cfg().layout = v; saveCfg(); }, "layout");
+        sec("EFFECTS");
+        tog("No Death Effect", c.noDeathEffect, [](bool v) { cfg().noDeathEffect = v; saveCfg(); });
+        tog("No Effects", c.noEffect, [](bool v) { cfg().noEffect = v; saveCfg(); });
+        tog("Hide Endscreen", c.hideEndscreen, [](bool v) { cfg().hideEndscreen = v; saveCfg(); });
+        tog("Hide New Best", c.hideNewBest, [](bool v) { cfg().hideNewBest = v; saveCfg(); });
+        tog("Stacked Orb Optimization", c.optStacked, [](bool v) { cfg().optStacked = v; saveCfg(); });
+        tog("Restart First Frame", c.restartFirst, [](bool v) { cfg().restartFirst = v; saveCfg(); });
+        sec("FADES");
+        tog("Level Fade In/Out", c.fadeLevel, [](bool v) { cfg().fadeLevel = v; saveCfg(); }, "fade");
+        tog("Audio Fade In/Out", c.fadeAudio, [](bool v) { cfg().fadeAudio = v; saveCfg(); }, "afade");
         break;
     case 3: {
         sec("MACROS");
@@ -545,6 +632,20 @@ void XyzMenu::rebuild(bool animate) {
         tog("Mirror Inputs", c.mirror, [](bool v) { cfg().mirror = v; saveCfg(); });
         tog("Mirror Inverted", c.mirrorInv, [](bool v) { cfg().mirrorInv = v; saveCfg(); });
         tog("No Mirror Portals", c.noMirror, [](bool v) { cfg().noMirror = v; saveCfg(); });
+        sec("ORBS AND PADS");
+        tog("Click Green Dash Orbs", c.clickDash, [](bool v) { cfg().clickDash = v; saveCfg(); });
+        tog("Click Black Orbs", c.clickBlack, [](bool v) { cfg().clickBlack = v; saveCfg(); });
+        tog("Easy Black Orb UFO", c.blackUfo, [](bool v) { cfg().blackUfo = v; saveCfg(); });
+        tog("Click Jump Pads", c.clickPads, [](bool v) { cfg().clickPads = v; saveCfg(); });
+        tog("Click Gravity Pads", c.clickGravPads, [](bool v) { cfg().clickGravPads = v; saveCfg(); });
+        sec("STABILIZERS");
+        tog("Auto Straight Fly", c.sFly, [](bool v) { cfg().sFly = v; saveCfg(); }, "sfly");
+        tog("Auto Straight UFO", c.sUfo, [](bool v) { cfg().sUfo = v; saveCfg(); }, "sufo");
+        sec("CLICKS");
+        tog("Auto Swift", c.autoSwift, [](bool v) { cfg().autoSwift = v; saveCfg(); });
+        tog("Extra Clicks", c.extraClick, [](bool v) { cfg().extraClick = v; saveCfg(); }, "extra");
+        sec("DEATH");
+        tog("Flip Input On Death", c.flipDeath, [](bool v) { cfg().flipDeath = v; saveCfg(); }, "flip");
         sec("AUTOCLICKER");
         tog("Autoclicker P1", c.acOn[0], [](bool v) { cfg().acOn[0] = v; saveCfg(); }, "ac0");
         tog("Autoclicker P2", c.acOn[1], [](bool v) { cfg().acOn[1] = v; saveCfg(); }, "ac1");
