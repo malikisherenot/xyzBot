@@ -1,4 +1,5 @@
 #include <ctime>
+#include <cstring>
 #include "State.hpp"
 #include "../vis/Vis.hpp"
 #include <Geode/modify/GJBaseGameLayer.hpp>
@@ -12,6 +13,18 @@
 using namespace geode::prelude;
 
 namespace xyz {
+// Macros are saved under the level's name (characters Windows can't store are dropped).
+std::string macroFileName() {
+    std::string out;
+    for (char c : rt().levelName) {
+        if ((unsigned char)c < 32 || std::strchr("\\/:*?\"<>|", c)) continue;
+        out += c;
+    }
+    while (!out.empty() && (out.back() == ' ' || out.back() == '.')) out.pop_back();
+    while (!out.empty() && out.front() == ' ') out.erase(out.begin());
+    return out.empty() ? std::string("macro") : out;
+}
+
 static size_t hi(int button, bool p2) { return (p2 ? 3 : 0) + std::clamp(button, 1, 3) - 1; }
 static bool takeover() { auto& c = cfg(); return c.maintainGravity || c.mirror || c.acOn[0] || c.acOn[1]; }
 
@@ -275,6 +288,7 @@ class $modify(XyzPL, PlayLayer) {
     bool init(GJGameLevel* level, bool a, bool b) {
         if (!PlayLayer::init(level, a, b)) return false;
         rt().levelId = level->m_levelID.value();
+        rt().levelName = std::string(level->m_levelName);
         return true;
     }
 
@@ -346,7 +360,11 @@ class $modify(XyzPL, PlayLayer) {
 
     void destroyPlayer(PlayerObject* p, GameObject* o) {
         auto& r = rt();
-        if (r.simulating) { r.simDead = true; return; }
+        if (r.simulating) {
+            if (o && o == m_anticheatSpike) return;   // the hidden spike at the start of every level
+            r.simDead = true;
+            return;
+        }
         if (cfg().noclip) return;
         PlayLayer::destroyPlayer(p, o);
         if (r.mode == Mode::Play && p && p->m_isDead && !m_isPracticeMode) stopAll(false);
@@ -368,6 +386,7 @@ class $modify(XyzPL, PlayLayer) {
 class $modify(XyzEditorLayer, LevelEditorLayer) {
     bool init(GJGameLevel* level, bool p1) {
         if (!LevelEditorLayer::init(level, p1)) return false;
+        rt().levelName = std::string(level->m_levelName);
         vis::attach(this);
         return true;
     }
@@ -432,7 +451,7 @@ void stopAll(bool save) {
     auto& r = rt();
     if (r.mode == Mode::Off) return;
     if (r.mode == Mode::Record && save && !r.rec.inputs.empty()) {
-        saveMacro(r.rec, fmt::format("macro_{}", (long long)std::time(nullptr)));
+        saveMacro(r.rec, macroFileName());
         Notification::create("Macro saved", NotificationIcon::Success)->show();
     }
     if (r.mode == Mode::Play) { cfg().tps = r.savedTps; cfg().tpsVal = r.prevTpsVal; }

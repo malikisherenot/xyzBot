@@ -8,7 +8,7 @@
 using namespace geode::prelude;
 
 namespace xyz {
-void stepOnce() { rt().stepPending++; }
+void stepOnce() { rt().stepPending = std::min(rt().stepPending + 1, 2000); }
 static bool pdActive(GJBaseGameLayer* pl) {
     auto& c = cfg();
     return c.preventDeath && !c.noclip && rt().mode != Mode::Play && pl->m_player1 && !pl->m_player1->m_isDead;
@@ -47,8 +47,13 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
 
         if (c.stepper) {
             if (r.stepPending <= 0) return;
-            r.stepPending--;
-            GJBaseGameLayer::update((float)step);
+            int n = std::min(r.stepPending, 600);
+            r.stepPending -= n;
+            for (int i = 0; i < n; ++i) {
+                r.subTick = i + 1 < n;
+                GJBaseGameLayer::update((float)step);
+            }
+            r.subTick = false;
             vis::refresh(pl);
             return;
         }
@@ -57,7 +62,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
             r.autosaveAcc += dt;
             if (r.autosaveAcc >= std::max(10, c.autosaveSec)) {
                 r.autosaveAcc = 0;
-                if (!r.rec.inputs.empty()) saveMacro(r.rec, "autosave");
+                if (!r.rec.inputs.empty()) saveMacro(r.rec, macroFileName() + " (autosave)");
             }
         }
 

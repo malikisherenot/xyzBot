@@ -51,6 +51,10 @@ struct Cfg {
     bool legacyShip = false;
     int legacyShipPct = 6;
     bool btnInLevel = true;
+    bool stepBar = true;
+    int stepN = 10;
+    int holdRate = 1;
+    int menuFont = 1;
     int themeIdx = 0;
     int accR = 0, accG = 217, accB = 153;
     int tintR = 13, tintG = 20, tintB = 28;
@@ -81,6 +85,7 @@ struct Rt {
     std::vector<double> cpsT[2];
     int maxCps[2] = {0, 0};
     float startX = 0.f;
+    std::string levelName;
     bool edWasDead = false;
     float edLastX = 0.f;
     bool seekPending = false;
@@ -92,6 +97,7 @@ struct Rt {
     int ssbEvents = 0;
 };
 
+std::string macroFileName();
 GJBaseGameLayer* activeLayer();
 bool isActive(GJBaseGameLayer* gl);
 void onEditorPlaytest(bool started);
