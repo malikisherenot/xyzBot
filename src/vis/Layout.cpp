@@ -89,6 +89,7 @@ std::string layoutString(std::string levelString) {
 }
 
 static bool g_layout = false;
+bool xyz::layoutOn() { return g_layout && PlayLayer::get(); }
 
 class $modify(XyzLayoutTools, LevelTools) {
     static bool verifyLevelIntegrity(gd::string v1, int v2) {
