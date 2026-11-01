@@ -1,5 +1,6 @@
 #pragma once
 #include <Geode/Geode.hpp>
+#include "../core/State.hpp"
 #include <vector>
 #include <algorithm>
 
@@ -22,7 +23,7 @@ inline cocos2d::CCLabelBMFont* mkLabelStyle(char const* text, int style) {
     }
     return cocos2d::CCLabelBMFont::create(text, "bigFont.fnt");
 }
-inline cocos2d::CCLabelBMFont* mkLabel(char const* text) { return mkLabelStyle(text, 1); }
+inline cocos2d::CCLabelBMFont* mkLabel(char const* text) { return mkLabelStyle(text, xyz::cfg().menuFont); }
 
 // Arial is tagged so the size matches GD's own font: the ratio of the two fonts' line heights is measured
 // once at runtime (whatever size Geode compiled the font at), then applied to every size set below.

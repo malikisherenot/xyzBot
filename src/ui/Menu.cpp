@@ -112,7 +112,10 @@ static CCMenuItemSpriteExtra* makeChip(ccColor3B col, bool sel, std::function<vo
 
 static std::string helpText(std::string const& k) {
     static std::map<std::string, std::string> const H = {
-        {"Frame Stepper", "Freezes the game and only advances when you press Step (menu button or F7)."},
+        {"Frame Stepper", "Freezes the game and only advances when you step. On touch devices use the on-screen controls, on desktop press F7."},
+        {"On-Screen Controls", "Shows Step, +N, Hold and Run buttons at the bottom of the screen while the stepper is on."},
+        {"Steps Per +N Button", "How many ticks the +N button advances at once."},
+        {"Hold Speed (ticks/frame)", "How many ticks the Hold button advances every frame while you keep it pressed."},
         {"Noclip", "Stops the player from dying."},
         {"Frame Fixes", "Records the player's position, rotation and Y velocity every tick so macros stay accurate. Makes macro files larger."},
         {"Ignore Level Check", "Lets you play a macro on a level other than the one it was recorded on."},
@@ -157,6 +160,7 @@ static std::string helpText(std::string const& k) {
         {"Size", "How large the label is."},
         {"Opacity", "How see-through the label is."},
         {"Red", "Red amount, from 0 to 255."}, {"Green", "Green amount, from 0 to 255."}, {"Blue", "Blue amount, from 0 to 255."},
+        {"Menu Font", "Switches the menu text between GD's own font (old) and Arial (new)."},
         {"Button In Levels", "Shows the floating button while you play. Turn off to hide it until you pause."},
     };
     auto it = H.find(k);
@@ -222,20 +226,9 @@ bool XyzMenu::init() {
         m_mainLayer->addChild(d, -1);
     }
 
-    auto title = mkLabel("xyzBot");
-    sc(title, .5f); title->setAnchorPoint({0, .5f}); title->setPosition({18, m_h - 20});
-    m_mainLayer->addChild(title);
-    auto sub = mkLabel(fmt::format("v{}", Mod::get()->getVersion().toVString().substr(1)).c_str());
-    sc(sub, .5f); sub->setOpacity(150); sub->setAnchorPoint({0, .5f});
-    sub->setPosition({title->getPositionX() + title->getScaledContentSize().width + 6, m_h - 22});
-    m_mainLayer->addChild(sub);
-
-    auto top = CCMenu::create();
-    top->setPosition({0, 0});
-    m_mainLayer->addChild(top, 5);
-    auto x = makeRound("x", [this] { this->onClose(nullptr); });
-    x->setPosition({m_w - 20, m_h - 20});
-    top->addChild(x);
+    m_head = CCNode::create();
+    m_mainLayer->addChild(m_head, 5);
+    this->buildHead();
 
     float cw = m_w - SW - 30.f, ch = m_h - 52.f;
     m_scroll = ScrollLayer::create({cw, ch});
@@ -255,6 +248,29 @@ bool XyzMenu::init() {
     m_mainLayer->runAction(CCEaseExponentialOut::create(CCMoveBy::create(.26f, {0, 10.f})));
     this->schedule(schedule_selector(XyzMenu::fadeStep));
     return true;
+}
+
+void XyzMenu::buildHead() {
+    m_head->removeAllChildren();
+    auto title = mkLabel("xyzBot");
+    sc(title, .5f); title->setAnchorPoint({0, .5f}); title->setPosition({18, m_h - 20});
+    m_head->addChild(title);
+    auto sub = mkLabel(fmt::format("v{}", Mod::get()->getVersion().toVString().substr(1)).c_str());
+    sc(sub, .5f); sub->setOpacity(150); sub->setAnchorPoint({0, .5f});
+    sub->setPosition({title->getPositionX() + title->getScaledContentSize().width + 6, m_h - 22});
+    m_head->addChild(sub);
+    auto top = CCMenu::create();
+    top->setPosition({0, 0});
+    m_head->addChild(top);
+    auto x = makeRound("x", [this] { this->onClose(nullptr); });
+    x->setPosition({m_w - 20, m_h - 20});
+    top->addChild(x);
+}
+
+void XyzMenu::applyFont() {
+    this->buildHead();
+    this->buildSide();
+    this->rebuild(false);
 }
 
 void XyzMenu::fadeStep(float dt) {
@@ -380,6 +396,11 @@ void XyzMenu::rebuild(bool animate) {
             sec("SPEEDHACK SETTINGS");
             num("Speed", [] { return fmt::format("{:.2f}", cfg().speedVal); }, [](int d) { cfg().speedVal = std::clamp(cfg().speedVal + d * 0.1f, 0.05f, 100.f); saveCfg(); });
             tog("Speedhack Audio", c.speedAudio, [](bool v) { cfg().speedAudio = v; saveCfg(); });
+        } else if (sub == "stepper") {
+            sec("FRAME STEPPER SETTINGS");
+            tog("On-Screen Controls", c.stepBar, [](bool v) { cfg().stepBar = v; saveCfg(); });
+            num("Steps Per +N Button", [] { return fmt::format("{}", cfg().stepN); }, [](int d) { cfg().stepN = std::clamp(cfg().stepN + d, 1, 240); saveCfg(); });
+            num("Hold Speed (ticks/frame)", [] { return fmt::format("{}", cfg().holdRate); }, [](int d) { cfg().holdRate = std::clamp(cfg().holdRate + d, 1, 16); saveCfg(); });
         } else if (sub == "ssb") {
             sec("SSB FIX SETTINGS");
             tog("Invert Correction", c.ssbInvert, [](bool v) { cfg().ssbInvert = v; saveCfg(); });
@@ -430,7 +451,7 @@ void XyzMenu::rebuild(bool animate) {
         sec("BOT");
         txt("State: " + st);
         pills({{"Record", [this] { startRecord(); this->later(false); }}, {"Stop", [this] { stopAll(true); this->later(false); }}, {"Step", [] { stepOnce(); }}});
-        tog("Frame Stepper", c.stepper, [](bool v) { cfg().stepper = v; });
+        tog("Frame Stepper", c.stepper, [](bool v) { cfg().stepper = v; }, "stepper");
         tog("Noclip", c.noclip, [](bool v) { cfg().noclip = v; saveCfg(); });
         sec("ACCURACY");
         tog("Frame Fixes", c.fixes, [](bool v) { cfg().fixes = v; saveCfg(); });
@@ -483,7 +504,7 @@ void XyzMenu::rebuild(bool animate) {
                 fit(l, w - 170.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y + 4});
                 menu->addChild(l);
                 auto s = mkLabel(ec ? "" : (sz >= 1024 ? fmt::format("{:.1f} KB", sz / 1024.0) : fmt::format("{} B", sz)).c_str());
-                sc(s, .5f); s->setOpacity(140); s->setAnchorPoint({0, .5f}); s->setPosition({12, y - 8});
+                sc(s, .26f); s->setOpacity(130); s->setAnchorPoint({0, .5f}); s->setPosition({12, y - 9});
                 menu->addChild(s);
                 auto p = makePill("Play", true, [this, n] {
                     if (!startPlay(n)) Notification::create("Cannot play macro", NotificationIcon::Error)->show();
@@ -531,6 +552,9 @@ void XyzMenu::rebuild(bool animate) {
     default: {
         sec("INTERFACE");
         tog("Button In Levels", c.btnInLevel, [](bool v) { cfg().btnInLevel = v; saveCfg(); });
+        num("Menu Font", [] { return std::string(cfg().menuFont ? "Arial (new)" : "GD (old)"); }, [this](int) {
+            cfg().menuFont = 1 - cfg().menuFont; saveCfg();
+            this->defer([this] { this->applyFont(); }); });
         sec("PRESETS");
         custom([this](CCMenu* menu, float y, float w) {
             int n = (int)(sizeof(PRESETS) / sizeof(PRESETS[0]));

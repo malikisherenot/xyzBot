@@ -13,11 +13,14 @@ class XyzMenu : public geode::Popup {
     cocos2d::CCNode* m_side = nullptr;
     cocos2d::CCNode* m_glass = nullptr;
     cocos2d::CCNode* m_hl = nullptr;
+    cocos2d::CCNode* m_head = nullptr;
     std::vector<cocos2d::CCLabelBMFont*> m_tabLabels;
     float m_fade = 0.f;
     bool m_closing = false;
     bool init() override;
     void buildSide();
+    void buildHead();
+    void applyFont();
     void moveHl(bool animate);
     void rebuild(bool animate = false);
     void later(bool animate);

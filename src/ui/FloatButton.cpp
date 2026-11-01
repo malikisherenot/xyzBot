@@ -2,6 +2,7 @@
 #include "Draw.hpp"
 #include "../core/State.hpp"
 #include <Geode/modify/CCScheduler.hpp>
+#include "StepBar.hpp"
 #include <Geode/ui/OverlayManager.hpp>
 
 using namespace geode::prelude;
@@ -12,6 +13,8 @@ class XyzFloatButton : public CCLayer {
     CCNode* m_body = nullptr;
     CCNode* m_halo = nullptr;
     CCDrawNode* m_art = nullptr;
+    CCLabelBMFont* m_lbl = nullptr;
+    int m_lastFont = -1;
     CCPoint m_start;
     bool m_down = false, m_moved = false;
     float m_fx = 0.06f, m_fy = 0.86f;
@@ -40,6 +43,8 @@ public:
         auto lbl = mkLabel("XYZ");
         sc(lbl, .34f);
         m_body->addChild(lbl, 2);
+        m_lbl = lbl;
+        m_lastFont = xyz::cfg().menuFont;
 
         this->redraw();
         m_halo->runAction(CCRepeatForever::create(CCSequence::create(
@@ -90,6 +95,11 @@ public:
         bool on = Mod::get()->getSettingValue<bool>("floating-button") && (c.btnInLevel || !inLevel);
         this->setVisible(on);
         if (!on) return;
+        if (m_lbl && c.menuFont != m_lastFont) {
+            m_lastFont = c.menuFont;
+            setStyle(m_lbl, c.menuFont);
+            sc(m_lbl, .34f);
+        }
         if (c.accR != m_drawnR || c.accG != m_drawnG || c.accB != m_drawnB) this->redraw();
         auto pl = PlayLayer::get();
         float target = (pl && !pl->m_isPaused) ? 0.7f : 1.f;
@@ -160,6 +170,7 @@ class $modify(XyzFloatSched, CCScheduler) {
         if (!scene) return;
         auto ov = OverlayManager::get();
         if (!ov) return;
+        xyz::ensureStepBar();
         if (!s_btn) s_btn = XyzFloatButton::create();
         if (s_btn && s_btn->getParent() != ov) {
             if (s_btn->getParent()) s_btn->removeFromParent();
