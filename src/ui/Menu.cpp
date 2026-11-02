@@ -160,6 +160,17 @@ static std::string helpText(std::string const& k) {
         {"Size", "How large the label is."},
         {"Opacity", "How see-through the label is."},
         {"Red", "Red amount, from 0 to 255."}, {"Green", "Green amount, from 0 to 255."}, {"Blue", "Blue amount, from 0 to 255."},
+        {"Fix Rotation Bug", "Fixes the ship, UFO, wave and swing tilt looking wrong at high TPS. Only changes how it looks, not the physics."},
+        {"Record Players", "Which players get recorded. Pick one player to record the other later and merge the two macros."},
+        {"Play Players", "Which players the macro controls during playback. You control the other player yourself."},
+        {"Auto Name Replay", "Names a new macro after the level. When off, it is called 'macro'."},
+        {"Rename Format", "How a number is added to the name when No Overwrite is on."},
+        {"No Overwrite", "A new recording gets a numbered name instead of replacing the macro with the same name."},
+        {"Sequence", "When a macro finishes, the next macro in your sequence starts. Add macros with +Seq."},
+        {"Random Order", "Picks the next macro in the sequence at random."},
+        {"Swap Player Input", "Your Player 1 taps control Player 2 and the other way around."},
+        {"Inverse Input P1", "Player 1 holds while you are not touching the screen, and lets go while you are."},
+        {"Inverse Input P2", "Player 2 holds while you are not touching the screen, and lets go while you are."},
         {"No Death Effect", "Hides the player's death explosion."},
         {"No Effects", "Stops most visual effects (circles, particles, shines, trigger flashes) from showing."},
         {"Hide Endscreen", "Skips the end-of-level screen. Useful for recording."},
@@ -472,6 +483,25 @@ void XyzMenu::rebuild(bool animate) {
             tog("Flip Player 2", c.flipP2, [](bool v) { cfg().flipP2 = v; saveCfg(); });
             tog("Flip Both", c.flipBoth, [](bool v) { cfg().flipBoth = v; saveCfg(); });
             tog("Flip Swift", c.flipSwift, [](bool v) { cfg().flipSwift = v; saveCfg(); });
+        } else if (sub == "naming") {
+            static char const* FMTS[] = {"Name_1", "Name 1", "Name (1)", "Name-1"};
+            sec("NAMING SETTINGS");
+            num("Rename Format", [] { return std::string(FMTS[std::clamp(cfg().renameFmt, 0, 3)]); }, [](int d) { auto& v = cfg().renameFmt; v = (v + d + 4) % 4; saveCfg(); });
+        } else if (sub == "seq") {
+            sec("SEQUENCE SETTINGS");
+            tog("Random Order", c.seqRandom, [](bool v) { cfg().seqRandom = v; saveCfg(); });
+            pills({{"Clear Sequence", [this] { cfg().seq.clear(); saveCfg(); this->later(false); }}});
+            if (c.seq.empty()) txt("The sequence is empty. Use +Seq on a macro in the Macros tab.");
+            for (size_t i = 0; i < c.seq.size(); ++i)
+                custom([this, i](CCMenu* menu, float y, float w) {
+                    auto l = mkLabel(fmt::format("{}. {}", i + 1, cfg().seq[i]).c_str());
+                    fit(l, w - 110.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y});
+                    menu->addChild(l);
+                    auto rm = makePill("Remove", false, [this, i] {
+                        if (i < cfg().seq.size()) cfg().seq.erase(cfg().seq.begin() + i);
+                        saveCfg(); this->later(false); });
+                    rm->setPosition({w - 36.f, y}); menu->addChild(rm);
+                });
         } else if (sub == "stepper") {
             sec("FRAME STEPPER SETTINGS");
             tog("On-Screen Controls", c.stepBar, [](bool v) { cfg().stepBar = v; saveCfg(); });
@@ -555,6 +585,8 @@ void XyzMenu::rebuild(bool animate) {
         tog("Hitbox Trail", c.trail, [](bool v) { cfg().trail = v; saveCfg(); }, "trail");
         sec("TRAJECTORY");
         tog("Show Trajectory", c.traj, [](bool v) { cfg().traj = v; saveCfg(); }, "traj");
+        sec("FIXES");
+        tog("Fix Rotation Bug", c.fixRotation, [](bool v) { cfg().fixRotation = v; saveCfg(); });
         sec("LEVEL");
         tog("Layout Mode (reload level)", c.layout, [](bool v) { cfg().layout = v; saveCfg(); }, "layout");
         sec("EFFECTS");
@@ -569,6 +601,7 @@ void XyzMenu::rebuild(bool animate) {
         tog("Audio Fade In/Out", c.fadeAudio, [](bool v) { cfg().fadeAudio = v; saveCfg(); }, "afade");
         break;
     case 3: {
+        static char const* PLAYERS[] = {"Both", "Player 1 only", "Player 2 only"};
         sec("MACROS");
         pills({{"Record", [this] { startRecord(); this->onClose(nullptr); }}, {"Stop", [this] { stopAll(true); this->later(false); }},
                {"Import", [this] {
@@ -581,24 +614,54 @@ void XyzMenu::rebuild(bool animate) {
                     }
                     Notification::create(fmt::format("Imported {}", n), NotificationIcon::Info)->show();
                     this->later(false); }}});
+        sec("RECORDING");
+        num("Record Players", [] { return std::string(PLAYERS[std::clamp(cfg().recPlayers, 0, 2)]); }, [](int d) { auto& v = cfg().recPlayers; v = (v + d + 3) % 3; saveCfg(); });
+        tog("Auto Name Replay", c.autoName, [](bool v) { cfg().autoName = v; saveCfg(); }, "naming");
+        tog("No Overwrite", c.noOverwrite, [](bool v) { cfg().noOverwrite = v; saveCfg(); });
+        sec("PLAYBACK");
+        num("Play Players", [] { return std::string(PLAYERS[std::clamp(cfg().playPlayers, 0, 2)]); }, [](int d) { auto& v = cfg().playPlayers; v = (v + d + 3) % 3; saveCfg(); });
+        tog("Sequence", c.seqOn, [](bool v) { cfg().seqOn = v; saveCfg(); }, "seq");
+        sec("LIBRARY");
         auto names = listMacros();
+        if (!m_mergeBase.empty()) txt("Merge base: " + m_mergeBase + ". Tap Merge on another macro, or on it again to cancel.");
         if (names.empty()) txt("No macros yet. Drop .gdr/.txt files into the macros folder and press Import.");
         for (auto& n : names) {
             custom([this, n](CCMenu* menu, float y, float w) {
                 std::error_code ec;
                 auto sz = std::filesystem::file_size(macroDir() / (n + ".xyz"), ec);
-                auto l = mkLabel(n.c_str());
-                fit(l, w - 170.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y + 4});
+                auto l = mkLabel(((m_mergeBase == n ? "* " : "") + n).c_str());
+                fit(l, w - 215.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y + 4});
                 menu->addChild(l);
                 auto s = mkLabel(ec ? "" : (sz >= 1024 ? fmt::format("{:.1f} KB", sz / 1024.0) : fmt::format("{} B", sz)).c_str());
                 sc(s, .26f); s->setOpacity(130); s->setAnchorPoint({0, .5f}); s->setPosition({12, y - 9});
                 menu->addChild(s);
-                auto p = makePill("Play", true, [this, n] {
+                std::vector<CCMenuItemSpriteExtra*> ps;
+                ps.push_back(makePill("Del", false, [this, n] { std::error_code e2; std::filesystem::remove(macroDir() / (n + ".xyz"), e2); this->later(false); }));
+                ps.push_back(makePill("Merge", false, [this, n] {
+                    if (m_mergeBase.empty()) {
+                        m_mergeBase = n;
+                        Notification::create("Merge base set. Tap Merge on another macro.", NotificationIcon::Info)->show();
+                    } else if (m_mergeBase == n) {
+                        m_mergeBase.clear();
+                    } else {
+                        std::string out;
+                        bool ok = mergeMacros(m_mergeBase, n, out);
+                        Notification::create(ok ? "Merged into " + out : std::string("Merge failed (different TPS?)"), ok ? NotificationIcon::Success : NotificationIcon::Error)->show();
+                        m_mergeBase.clear();
+                    }
+                    this->later(false); }));
+                ps.push_back(makePill("+Seq", false, [this, n] {
+                    cfg().seq.push_back(n); saveCfg();
+                    Notification::create("Added to sequence", NotificationIcon::Success)->show(); }));
+                ps.push_back(makePill("Play", true, [this, n] {
                     if (!startPlay(n)) Notification::create("Cannot play macro", NotificationIcon::Error)->show();
-                    else this->onClose(nullptr); });
-                p->setPosition({w - 82, y}); menu->addChild(p);
-                auto dl = makePill("Del", false, [this, n] { std::error_code e2; std::filesystem::remove(macroDir() / (n + ".xyz"), e2); this->later(false); });
-                dl->setPosition({w - 30, y}); menu->addChild(dl);
+                    else this->onClose(nullptr); }));
+                float x = w - 8.f;
+                for (auto p : ps) {
+                    float pw = p->getContentSize().width;
+                    p->setPosition({x - pw / 2.f, y}); menu->addChild(p);
+                    x -= pw + 5.f;
+                }
             });
         }
         break;
@@ -632,6 +695,9 @@ void XyzMenu::rebuild(bool animate) {
         tog("Mirror Inputs", c.mirror, [](bool v) { cfg().mirror = v; saveCfg(); });
         tog("Mirror Inverted", c.mirrorInv, [](bool v) { cfg().mirrorInv = v; saveCfg(); });
         tog("No Mirror Portals", c.noMirror, [](bool v) { cfg().noMirror = v; saveCfg(); });
+        tog("Swap Player Input", c.swapInput, [](bool v) { cfg().swapInput = v; saveCfg(); });
+        tog("Inverse Input P1", c.inverse[0], [](bool v) { cfg().inverse[0] = v; saveCfg(); });
+        tog("Inverse Input P2", c.inverse[1], [](bool v) { cfg().inverse[1] = v; saveCfg(); });
         sec("ORBS AND PADS");
         tog("Click Green Dash Orbs", c.clickDash, [](bool v) { cfg().clickDash = v; saveCfg(); });
         tog("Click Black Orbs", c.clickBlack, [](bool v) { cfg().clickBlack = v; saveCfg(); });
