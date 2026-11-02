@@ -41,6 +41,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
         auto pl = xyz::activeLayer();
         bool mine = pl && (GJBaseGameLayer*)pl == this && !r.simulating;
         if (!mine) { GJBaseGameLayer::update(dt); return; }
+        vis::rotRestore(pl);
 
         double tps = curTps();
         double step = 1.0 / tps;

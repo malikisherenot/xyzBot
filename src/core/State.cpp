@@ -22,6 +22,21 @@ void loadCfg() {
     LD(autosave, bool); LD(autosaveSec, int); LD(labels, bool);
     LD(ssbFix, bool); LD(ssbInvert, bool); LD(legacyShip, bool); LD(legacyShipPct, int);
     LD(btnInLevel, bool);
+    LD(fixRotation, bool); LD(autoName, bool); LD(noOverwrite, bool); LD(renameFmt, int); LD(recPlayers, int); LD(playPlayers, int);
+    LD(swapInput, bool); LD(seqOn, bool); LD(seqRandom, bool);
+    c.inverse[0] = m->getSavedValue<bool>("inverse0", false); c.inverse[1] = m->getSavedValue<bool>("inverse1", false);
+    {
+        c.seq.clear();
+        std::string all = m->getSavedValue<std::string>("seq", "");
+        size_t pos = 0;
+        while (pos <= all.size() && !all.empty()) {
+            auto nl = all.find('\n', pos);
+            auto item = all.substr(pos, nl == std::string::npos ? std::string::npos : nl - pos);
+            if (!item.empty()) c.seq.push_back(item);
+            if (nl == std::string::npos) break;
+            pos = nl + 1;
+        }
+    }
     LD(noDeathEffect, bool); LD(noEffect, bool); LD(hideEndscreen, bool); LD(hideNewBest, bool); LD(optStacked, bool); LD(restartFirst, bool);
     LD(fadeLevel, bool); LD(fadeAudio, bool); LD(clickDash, bool); LD(clickBlack, bool); LD(blackUfo, bool); LD(clickPads, bool); LD(clickGravPads, bool);
     LD(autoSwift, bool); LD(extraClick, bool); LD(extraAmt, int); LD(sFly, bool); LD(sUfo, bool);
@@ -57,6 +72,14 @@ void saveCfg() {
     SV(autosave, bool); SV(autosaveSec, int); SV(labels, bool);
     SV(ssbFix, bool); SV(ssbInvert, bool); SV(legacyShip, bool); SV(legacyShipPct, int);
     SV(btnInLevel, bool);
+    SV(fixRotation, bool); SV(autoName, bool); SV(noOverwrite, bool); SV(renameFmt, int); SV(recPlayers, int); SV(playPlayers, int);
+    SV(swapInput, bool); SV(seqOn, bool); SV(seqRandom, bool);
+    m->setSavedValue<bool>("inverse0", c.inverse[0]); m->setSavedValue<bool>("inverse1", c.inverse[1]);
+    {
+        std::string all;
+        for (auto& n : c.seq) { if (!all.empty()) all += '\n'; all += n; }
+        m->setSavedValue<std::string>("seq", all);
+    }
     SV(noDeathEffect, bool); SV(noEffect, bool); SV(hideEndscreen, bool); SV(hideNewBest, bool); SV(optStacked, bool); SV(restartFirst, bool);
     SV(fadeLevel, bool); SV(fadeAudio, bool); SV(clickDash, bool); SV(clickBlack, bool); SV(blackUfo, bool); SV(clickPads, bool); SV(clickGravPads, bool);
     SV(autoSwift, bool); SV(extraClick, bool); SV(extraAmt, int); SV(sFly, bool); SV(sUfo, bool);
@@ -96,4 +119,35 @@ std::vector<std::string> listMacros() {
     return out;
 }
 
+
+// Numbered file name for "No Overwrite": Name_1, Name_2 ... (format chosen in the naming settings).
+std::string uniqueMacroName(std::string const& base) {
+    static char const* FMT[] = {"_#", " #", " (#)", "-#"};
+    std::string f = FMT[std::clamp(cfg().renameFmt, 0, 3)];
+    auto exists = [](std::string const& n) { std::error_code ec; return std::filesystem::exists(macroDir() / (n + ".xyz"), ec); };
+    if (!exists(base)) return base;
+    for (int n = 1; n < 10000; ++n) {
+        std::string suffix = f;
+        suffix.replace(suffix.find('#'), 1, std::to_string(n));
+        if (!exists(base + suffix)) return base + suffix;
+    }
+    return base;
+}
+
+// Merge macro b into macro a (for example a Player 1 macro and a Player 2 macro) and save as "a + b".
+bool mergeMacros(std::string const& a, std::string const& b, std::string& outName) {
+    Macro ma, mb;
+    if (!loadMacro(ma, a) || !loadMacro(mb, b) || ma.tps != mb.tps) return false;
+    ma.inputs.insert(ma.inputs.end(), mb.inputs.begin(), mb.inputs.end());
+    std::stable_sort(ma.inputs.begin(), ma.inputs.end(), [](auto& x, auto& y) { return x.tick < y.tick; });
+    for (auto& f : mb.fixes) {
+        bool dup = false;
+        for (auto& g : ma.fixes) if (g.tick == f.tick && g.p2 == f.p2) { dup = true; break; }
+        if (!dup) ma.fixes.push_back(f);
+    }
+    std::stable_sort(ma.fixes.begin(), ma.fixes.end(), [](auto& x, auto& y) { return x.tick < y.tick; });
+    ma.ticks = std::max(ma.ticks, mb.ticks);
+    outName = uniqueMacroName(a + " + " + b);
+    return saveMacro(ma, outName);
+}
 }

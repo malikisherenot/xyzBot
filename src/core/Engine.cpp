@@ -1,5 +1,6 @@
 #include <ctime>
 #include <cstring>
+#include <random>
 #include "State.hpp"
 #include "../vis/Vis.hpp"
 #include <Geode/modify/GJBaseGameLayer.hpp>
@@ -16,6 +17,7 @@ namespace xyz {
 // Macros are saved under the level's name (characters Windows can't store are dropped).
 std::string macroFileName() {
     std::string out;
+    if (!cfg().autoName) return "macro";
     for (char c : rt().levelName) {
         if ((unsigned char)c < 32 || std::strchr("\\/:*?\"<>|", c)) continue;
         out += c;
@@ -26,7 +28,10 @@ std::string macroFileName() {
 }
 
 static size_t hi(int button, bool p2) { return (p2 ? 3 : 0) + std::clamp(button, 1, 3) - 1; }
-static bool takeover() { auto& c = cfg(); return c.maintainGravity || c.mirror || c.acOn[0] || c.acOn[1]; }
+static bool takeover() { auto& c = cfg(); return c.maintainGravity || c.mirror || c.acOn[0] || c.acOn[1] || c.inverse[0] || c.inverse[1]; }
+
+// Which players a macro controls during playback / records (0 both, 1 player 1, 2 player 2).
+static bool covers(int mode, bool p2) { return mode == 0 || (mode == 1 && !p2) || (mode == 2 && p2); }
 
 static bool noclipFor(PlayerObject* p, GJBaseGameLayer* gl) {
     auto& c = cfg();
@@ -98,6 +103,7 @@ void computeWant() {
     auto& r = rt(); auto& c = cfg();
     if (!takeover() || r.mode == Mode::Play) { r.want = {r.gameHeld[0], r.gameHeld[1]}; return; }
     bool d[2] = {r.userHeld[0] || r.acHeld[0], r.userHeld[1] || r.acHeld[1]};
+    for (int i = 0; i < 2; ++i) if (c.inverse[i]) d[i] = !d[i];
     if (c.mirror) { bool a = d[0] || d[1]; d[0] = a; d[1] = a != c.mirrorInv; }
     if (c.maintainGravity) {
         if (auto pl = activeLayer()) {
@@ -186,6 +192,7 @@ static void rewind() {
     r.cpsT[0].clear(); r.cpsT[1].clear(); r.maxCps[0] = r.maxCps[1] = 0;
     r.frozen = false; r.autosaveAcc = 0.0; r.seekPending = false;
     r.ssbActive = false; r.ssbLast = 1.f; r.ssbEvents = 0;
+    vis::rotClear();
     auto gl = activeLayer();
     r.startX = (gl && gl->m_player1) ? gl->m_player1->getPositionX() : 0.f;
     r.edWasDead = false; r.edLastX = r.startX;
@@ -202,6 +209,7 @@ static void rewind() {
 }
 
 static void applyFix(GJBaseGameLayer* pl, Fix const& f) {
+    if (!covers(cfg().playPlayers, f.p2)) return;
     auto p = f.p2 ? pl->m_player2 : pl->m_player1;
     if (!p || (f.p2 && !pl->m_gameState.m_isDualMode)) return;
     p->setPosition({f.x, f.y});
@@ -217,11 +225,12 @@ static void feed(GJBaseGameLayer* gl) {
         r.seekPending = false;
         r.feeding = true;
         for (size_t i = 0; i < 6; ++i)
-            if (r.seekHeld[i]) { gl->handleButton(true, (int)(i % 3 + 1), i < 3); r.held[i] = true; }
+            if (r.seekHeld[i] && covers(cfg().playPlayers, i >= 3)) { gl->handleButton(true, (int)(i % 3 + 1), i < 3); r.held[i] = true; }
         r.feeding = false;
     }
     while (r.nextIn < m.inputs.size() && m.inputs[r.nextIn].tick <= r.tick) {
         auto& i = m.inputs[r.nextIn++];
+        if (!covers(cfg().playPlayers, i.p2)) continue;
         r.feeding = true;
         gl->handleButton(i.down, i.button, !i.p2);
         r.feeding = false;
@@ -237,8 +246,10 @@ static void closeTick(GJBaseGameLayer* pl) {
             applyFix(pl, r.play.fixes[r.nextFix++]);
         r.tick++;
         if (r.tick > r.play.ticks + 1) {
+            bool seq = cfg().seqOn && !cfg().seq.empty();
             stopAll(false);
-            if (cfg().autoExit) queueInMainThread([] {
+            if (seq) queueInMainThread([] { seqNext(); });
+            else if (cfg().autoExit) queueInMainThread([] {
                 if (auto p = PlayLayer::get()) {
                     p->onQuit();
                     CCDirector::sharedDirector()->popSceneWithTransition(0.5f, PopTransition::kPopTransitionFade);
@@ -250,8 +261,8 @@ static void closeTick(GJBaseGameLayer* pl) {
             auto add = [&](PlayerObject* p, bool p2) {
                 if (p) r.rec.fixes.push_back({r.tick, p2, p->getPositionX(), p->getPositionY(), p->getRotation(), (float)p->m_yVelocity});
             };
-            add(pl->m_player1, false);
-            if (pl->m_gameState.m_isDualMode) add(pl->m_player2, true);
+            if (covers(cfg().recPlayers, false)) add(pl->m_player1, false);
+            if (pl->m_gameState.m_isDualMode && covers(cfg().recPlayers, true)) add(pl->m_player2, true);
         }
         r.tick++;
         r.rec.ticks = r.tick;
@@ -283,16 +294,17 @@ class $modify(XyzGL, GJBaseGameLayer) {
     void handleButton(bool down, int button, bool p1) {
         auto& r = rt(); auto& c = cfg();
         if (!isActive(this) || r.simulating) { GJBaseGameLayer::handleButton(down, button, p1); return; }
-        bool p2 = !p1;
-        if (r.mode == Mode::Play && !r.feeding && !r.resetting && c.blockInputs) return;
         bool ext = !r.internal && !r.feeding && !r.resetting;
+        if (ext && c.swapInput) p1 = !p1;
+        bool p2 = !p1;
+        if (r.mode == Mode::Play && !r.feeding && !r.resetting && c.blockInputs && covers(c.playPlayers, p2)) return;
         if (ext && button == 1 && !down && c.autoSwift && r.mode != Mode::Play && !takeover()) return;   // auto swift: releases are generated
         if (ext && button == 1) {
             r.userHeld[p2] = down;
             if (down) cpsPush(p2);
             if (takeover() && r.mode != Mode::Play) return;
         }
-        if (r.mode == Mode::Record && !r.resetting && button >= 1 && button <= 3) {
+        if (r.mode == Mode::Record && !r.resetting && button >= 1 && button <= 3 && covers(c.recPlayers, p2)) {
             r.held[hi(button, p2)] = down;
             r.rec.inputs.push_back({r.tick, (uint8_t)button, down, p2});
         }
@@ -419,6 +431,7 @@ class $modify(XyzPL, PlayLayer) {
     void onQuit() {
         if (rt().mode != Mode::Off) stopAll(rt().mode == Mode::Record);
         vis::detach();
+        vis::rotClear();
         PlayLayer::onQuit();
     }
 };
@@ -458,6 +471,19 @@ void onEditorPlaytest(bool started) {
     vis::hideLabels();
 }
 
+// Plays the next macro of the sequence (in order, or random) once the current one finished.
+void seqNext() {
+    auto& c = cfg(); auto& r = rt();
+    if (c.seq.empty() || !PlayLayer::get()) return;
+    if (c.seqRandom && c.seq.size() > 1) {
+        int n = r.seqIdx;
+        static std::mt19937 rng{std::random_device{}()};
+        while (n == r.seqIdx) n = (int)(rng() % c.seq.size());
+        r.seqIdx = n;
+    } else r.seqIdx = (r.seqIdx + 1) % (int)c.seq.size();
+    if (!startPlay(c.seq[r.seqIdx])) Notification::create("Sequence: cannot play next macro", NotificationIcon::Error)->show();
+}
+
 bool startRecord() {
     auto& r = rt();
     if (auto pl = PlayLayer::get()) {
@@ -492,7 +518,9 @@ void stopAll(bool save) {
     auto& r = rt();
     if (r.mode == Mode::Off) return;
     if (r.mode == Mode::Record && save && !r.rec.inputs.empty()) {
-        saveMacro(r.rec, macroFileName());
+        auto name = macroFileName();
+        if (cfg().noOverwrite) name = uniqueMacroName(name);
+        saveMacro(r.rec, name);
         Notification::create("Macro saved", NotificationIcon::Success)->show();
     }
     if (r.mode == Mode::Play) { cfg().tps = r.savedTps; cfg().tpsVal = r.prevTpsVal; }

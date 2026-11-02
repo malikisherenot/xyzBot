@@ -51,6 +51,14 @@ struct Cfg {
     bool legacyShip = false;
     int legacyShipPct = 6;
     bool btnInLevel = true;
+    // macro tools and rotation fix (ported from Echo, GPL-3.0)
+    bool fixRotation = false;
+    bool autoName = true, noOverwrite = false;
+    int renameFmt = 0;
+    int recPlayers = 0, playPlayers = 0;   // 0 both, 1 player 1 only, 2 player 2 only
+    bool swapInput = false, inverse[2] = {false, false};
+    bool seqOn = false, seqRandom = false;
+    std::vector<std::string> seq;
     // ported from Scarlet Utils (own implementation)
     bool noDeathEffect = false, noEffect = false, hideEndscreen = false, hideNewBest = false;
     bool optStacked = false, restartFirst = false;
@@ -108,6 +116,7 @@ struct Rt {
     std::array<bool, 6> seekHeld{};
     size_t cpCount = 0;
     double autosaveAcc = 0.0;
+    int seqIdx = -1;
     bool padClick[2] = {false, false};
     bool clickedPad = false, optStart = false, optStop = false, optRing = false;
     int flipPlayer = 0;
@@ -118,6 +127,9 @@ struct Rt {
 };
 
 std::string macroFileName();
+std::string uniqueMacroName(std::string const& base);
+bool mergeMacros(std::string const& a, std::string const& b, std::string& outName);
+void seqNext();
 void pressButton(GJBaseGameLayer* gl, bool down, int p);
 void assistTick(GJBaseGameLayer* gl);
 void flipOnReset();
