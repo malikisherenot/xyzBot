@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.9.0
+- Ported from Echo (GPL-3.0): Fix Rotation Bug (visual tilt of ship, UFO, wave and swing)
+- Macro tools: Record Players and Play Players (Player 1 or 2 only), Auto Name Replay, No Overwrite with rename formats
+- Macro Merge, Sequence (ordered or random playlist), Swap Player Input, Inverse Input
+
 ## v1.8.0
 - Ported from Scarlet Utils (own implementation): Click Green Dash / Black Orbs, Easy Black Orb UFO, Click Jump / Gravity Pads
 - Auto Straight Fly, Auto Straight UFO, Auto Swift, Extra Clicks, Flip Input On Death
