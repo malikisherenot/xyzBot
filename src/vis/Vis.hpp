@@ -8,6 +8,9 @@ void refresh(GJBaseGameLayer* pl);
 bool predictDeath(GJBaseGameLayer* pl, int look);
 void updateLabels(GJBaseGameLayer* pl);
 void hideLabels();
+void rotClear();
+void rotRestore(GJBaseGameLayer* gl);
+void rotPresent(GJBaseGameLayer* gl);
 }
 namespace xyz::labels {
 struct Cfg { bool on = false; int anchor = 0; int font = 1; float opacity = 1.f; float scale = 0.7f; int r = 255, g = 255, b = 255; };

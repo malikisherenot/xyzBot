@@ -210,6 +210,7 @@ bool predictDeath(GJBaseGameLayer* pl, int look) {
 
 void refresh(GJBaseGameLayer* pl) {
     auto& c = cfg();
+    rotPresent(pl);
     updateLabels(pl);
     if (!g_hb || !g_tr) return;
     g_hb->setVisible(c.hitboxes);
