@@ -7,6 +7,7 @@
 #include <Geode/modify/CCKeyboardDispatcher.hpp>
 #endif
 #include <memory>
+#include <Geode/ui/TextInput.hpp>
 #include <map>
 
 using namespace geode::prelude;
@@ -160,6 +161,8 @@ static std::string helpText(std::string const& k) {
         {"Size", "How large the label is."},
         {"Opacity", "How see-through the label is."},
         {"Red", "Red amount, from 0 to 255."}, {"Green", "Green amount, from 0 to 255."}, {"Blue", "Blue amount, from 0 to 255."},
+        {"Take Over On Input", "While a macro plays, your first tap takes control: the macro stops there and keeps recording what you do. The part already played is kept."},
+        {"Continue After Finish", "When a macro reaches its end, it keeps recording instead of stopping, so you can add more to it."},
         {"Fix Rotation Bug", "Fixes the ship, UFO, wave and swing tilt looking wrong at high TPS. Only changes how it looks, not the physics."},
         {"Record Players", "Which players get recorded. Pick one player to record the other later and merge the two macros."},
         {"Play Players", "Which players the macro controls during playback. You control the other player yourself."},
@@ -224,6 +227,69 @@ static CCMenuItemSpriteExtra* makeHelp(std::string title, std::string text) {
     node->addChild(l);
     return CCMenuItemExt::createSpriteExtra(node, [title, text](auto) { FLAlertLayer::create(title.c_str(), text, "OK")->show(); });
 }
+
+// Setters used when a value is typed in. Rows that depend on an index set their own.
+static std::function<void(double)> numSetter(std::string const& k) {
+    auto& c = cfg();
+    auto F = [](float* p, float lo, float hi) { return std::function<void(double)>([p, lo, hi](double v) { *p = std::clamp((float)v, lo, hi); saveCfg(); }); };
+    auto I = [](int* p, int lo, int hi) { return std::function<void(double)>([p, lo, hi](double v) { *p = std::clamp((int)std::lround(v), lo, hi); saveCfg(); }); };
+    if (k == "TPS") return F(&c.tpsVal, 1.f, 1000000.f);
+    if (k == "Frame Budget (ms)") return F(&c.budgetMs, 1.f, 100.f);
+    if (k == "Speed") return F(&c.speedVal, 0.05f, 100.f);
+    if (k == "Fade In (s)") return F(&c.fadeLevelIn, 0.f, 10.f);
+    if (k == "Fade Out (s)") return F(&c.fadeLevelOut, 0.f, 10.f);
+    if (k == "Audio Fade In (s)") return F(&c.fadeAudioIn, 0.f, 10.f);
+    if (k == "Audio Fade Out (s)") return F(&c.fadeAudioOut, 0.f, 10.f);
+    if (k == "Fly Threshold P1") return F(&c.sFlyThr[0], 0.f, 50.f);
+    if (k == "Fly Threshold P2") return F(&c.sFlyThr[1], 0.f, 50.f);
+    if (k == "UFO Target Y P1") return F(&c.sUfoTarget[0], 0.f, 3000.f);
+    if (k == "UFO Target Y P2") return F(&c.sUfoTarget[1], 0.f, 3000.f);
+    if (k == "UFO Threshold P1") return F(&c.sUfoThr[0], 0.f, 300.f);
+    if (k == "UFO Threshold P2") return F(&c.sUfoThr[1], 0.f, 300.f);
+    if (k == "Extra Clicks Amount") return I(&c.extraAmt, 1, 10);
+    if (k == "Steps Per +N Button") return I(&c.stepN, 1, 240);
+    if (k == "Hold Speed (ticks/frame)") return I(&c.holdRate, 1, 16);
+    if (k == "Extra Weight (%)") return I(&c.legacyShipPct, 0, 100);
+    if (k == "Trail Length") return I(&c.trailLen, 10, 2000);
+    if (k == "Length") return I(&c.trajLen, 10, 2000);
+    if (k == "Lookahead Ticks") return I(&c.pdLook, 1, 10);
+    if (k == "Interval (s)") return I(&c.autosaveSec, 10, 3600);
+    return nullptr;
+}
+
+// Small window for typing an exact number.
+class XyzValuePopup : public geode::Popup {
+    TextInput* m_input = nullptr;
+    std::function<void(double)> m_cb;
+public:
+    static void open(std::string title, std::string cur, std::function<void(double)> cb) {
+        auto p = new XyzValuePopup();
+        if (p->setup(title, cur, std::move(cb))) { p->autorelease(); p->show(); }
+        else delete p;
+    }
+    bool setup(std::string const& title, std::string const& cur, std::function<void(double)> cb) {
+        m_cb = std::move(cb);
+        if (!Popup::init(250.f, 135.f)) return false;
+        this->setTitle(title);
+        m_input = TextInput::create(180.f, "Value", "bigFont.fnt");
+        m_input->setFilter("0123456789.-");
+        m_input->setString(cur);
+        m_input->setPosition({125.f, 72.f});
+        m_mainLayer->addChild(m_input);
+        auto menu = CCMenu::create();
+        menu->setPosition({0, 0});
+        m_mainLayer->addChild(menu);
+        auto ok = CCMenuItemExt::createSpriteExtra(ButtonSprite::create("Apply"), [this](auto) {
+            auto r = geode::utils::numFromString<double>(m_input->getString());
+            if (r.isErr()) { Notification::create("That is not a number", NotificationIcon::Error)->show(); return; }
+            m_cb(r.unwrap());
+            this->onClose(nullptr);
+        });
+        ok->setPosition({125.f, 28.f});
+        menu->addChild(ok);
+        return true;
+    }
+};
 
 XyzMenu* XyzMenu::create() {
     auto r = new XyzMenu();
@@ -395,6 +461,7 @@ struct Row {
     std::function<void(bool)> setb;
     std::function<std::string()> get;
     std::function<void(int)> step;
+    std::function<void(double)> setv;
     std::vector<std::pair<std::string, std::function<void()>>> pills;
     std::function<void(CCMenu*, float, float)> custom;
 };
@@ -408,15 +475,16 @@ void XyzMenu::rebuild(bool animate) {
 
     auto sec = [&](std::string t) { Row x; x.k = Row::Section; x.label = std::move(t); rows.push_back(std::move(x)); };
     auto tog = [&](std::string t, bool v, std::function<void(bool)> f, std::string gear = "") { Row x; x.k = Row::Toggle; x.label = std::move(t); x.on = v; x.setb = std::move(f); x.gear = std::move(gear); x.help = helpText(x.label); rows.push_back(std::move(x)); };
-    auto num = [&](std::string t, std::function<std::string()> g, std::function<void(int)> s) { Row x; x.k = Row::Num; x.label = std::move(t); x.get = std::move(g); x.step = std::move(s); x.help = helpText(x.label); rows.push_back(std::move(x)); };
+    auto numS = [&](std::string t, std::function<std::string()> g, std::function<void(int)> s, std::function<void(double)> sv) { Row x; x.k = Row::Num; x.label = std::move(t); x.get = std::move(g); x.step = std::move(s); x.setv = std::move(sv); x.help = helpText(x.label); rows.push_back(std::move(x)); };
+    auto num = [&](std::string t, std::function<std::string()> g, std::function<void(int)> s) { auto sv = numSetter(t); numS(std::move(t), std::move(g), std::move(s), std::move(sv)); };
     auto txt = [&](std::string t) { Row x; x.k = Row::Text; x.label = std::move(t); rows.push_back(std::move(x)); };
     auto pills = [&](std::vector<std::pair<std::string, std::function<void()>>> p) { Row x; x.k = Row::Pills; x.pills = std::move(p); rows.push_back(std::move(x)); };
     auto custom = [&](std::function<void(CCMenu*, float, float)> f) { Row x; x.k = Row::Custom; x.custom = std::move(f); rows.push_back(std::move(x)); };
 
     auto colorRows = [&](int* cr, int* cg, int* cb, std::function<void()> changed) {
-        num("Red", [cr] { return fmt::format("{}", *cr); }, [cr, changed](int d) { *cr = std::clamp(*cr + d * 15, 0, 255); changed(); });
-        num("Green", [cg] { return fmt::format("{}", *cg); }, [cg, changed](int d) { *cg = std::clamp(*cg + d * 15, 0, 255); changed(); });
-        num("Blue", [cb] { return fmt::format("{}", *cb); }, [cb, changed](int d) { *cb = std::clamp(*cb + d * 15, 0, 255); changed(); });
+        numS("Red", [cr] { return fmt::format("{}", *cr); }, [cr, changed](int d) { *cr = std::clamp(*cr + d * 15, 0, 255); changed(); }, [cr, changed](double v) { *cr = std::clamp((int)std::lround(v), 0, 255); changed(); });
+        numS("Green", [cg] { return fmt::format("{}", *cg); }, [cg, changed](int d) { *cg = std::clamp(*cg + d * 15, 0, 255); changed(); }, [cg, changed](double v) { *cg = std::clamp((int)std::lround(v), 0, 255); changed(); });
+        numS("Blue", [cb] { return fmt::format("{}", *cb); }, [cb, changed](int d) { *cb = std::clamp(*cb + d * 15, 0, 255); changed(); }, [cb, changed](double v) { *cb = std::clamp((int)std::lround(v), 0, 255); changed(); });
     };
     auto labelChips = [&](std::function<bool(int)> selected, std::function<void(int)> pick) {
         custom([=, this](CCMenu* menu, float y, float w) {
@@ -534,9 +602,9 @@ void XyzMenu::rebuild(bool animate) {
             int p = sub == "ac1";
             sec(p ? "AUTOCLICKER P2 SETTINGS" : "AUTOCLICKER P1 SETTINGS");
             tog("Swift Clicks", c.acSwift[p], [p](bool v) { cfg().acSwift[p] = v; saveCfg(); });
-            num("Hold Ticks", [p] { return fmt::format("{}", cfg().acHold[p]); }, [p](int d) { cfg().acHold[p] = std::clamp(cfg().acHold[p] + d, 1, 240); saveCfg(); });
-            num("Release Ticks", [p] { return fmt::format("{}", cfg().acRel[p]); }, [p](int d) { cfg().acRel[p] = std::clamp(cfg().acRel[p] + d, 1, 240); saveCfg(); });
-            num("Clicks Per Hold", [p] { return fmt::format("{}", cfg().acClicks[p]); }, [p](int d) { cfg().acClicks[p] = std::clamp(cfg().acClicks[p] + d, 1, 10); saveCfg(); });
+            numS("Hold Ticks", [p] { return fmt::format("{}", cfg().acHold[p]); }, [p](int d) { cfg().acHold[p] = std::clamp(cfg().acHold[p] + d, 1, 240); saveCfg(); }, [p](double v) { cfg().acHold[p] = std::clamp((int)std::lround(v), 1, 240); saveCfg(); });
+            numS("Release Ticks", [p] { return fmt::format("{}", cfg().acRel[p]); }, [p](int d) { cfg().acRel[p] = std::clamp(cfg().acRel[p] + d, 1, 240); saveCfg(); }, [p](double v) { cfg().acRel[p] = std::clamp((int)std::lround(v), 1, 240); saveCfg(); });
+            numS("Clicks Per Hold", [p] { return fmt::format("{}", cfg().acClicks[p]); }, [p](int d) { cfg().acClicks[p] = std::clamp(cfg().acClicks[p] + d, 1, 10); saveCfg(); }, [p](double v) { cfg().acClicks[p] = std::clamp((int)std::lround(v), 1, 10); saveCfg(); });
         } else if (sub == "label" && m_sel >= 0) {
             size_t i = (size_t)m_sel;
             sec(labels::name(i));
@@ -544,8 +612,8 @@ void XyzMenu::rebuild(bool animate) {
             num("Anchor", [i] { static char const* a[] = {"Top Left", "Top Right", "Bottom Left", "Bottom Right"}; return std::string(a[std::clamp(labels::cfg(i).anchor, 0, 3)]); },
                 [i](int d) { auto& a = labels::cfg(i).anchor; a = (a + d + 4) % 4; labels::save(i); });
             num("Font", [i] { return std::string(labels::cfg(i).font == 0 ? "GD Big" : "Arial"); }, [i](int) { auto& f = labels::cfg(i).font; f = 1 - f; labels::save(i); });
-            num("Size", [i] { return fmt::format("{:.2f}", labels::cfg(i).scale); }, [i](int d) { auto& s = labels::cfg(i).scale; s = std::clamp(s + d * 0.05f, 0.1f, 2.f); labels::save(i); });
-            num("Opacity", [i] { return fmt::format("{:.2f}", labels::cfg(i).opacity); }, [i](int d) { auto& o = labels::cfg(i).opacity; o = std::clamp(o + d * 0.1f, 0.1f, 1.f); labels::save(i); });
+            numS("Size", [i] { return fmt::format("{:.2f}", labels::cfg(i).scale); }, [i](int d) { auto& s = labels::cfg(i).scale; s = std::clamp(s + d * 0.05f, 0.1f, 2.f); labels::save(i); }, [i](double v) { labels::cfg(i).scale = std::clamp((float)v, 0.1f, 2.f); labels::save(i); });
+            numS("Opacity", [i] { return fmt::format("{:.2f}", labels::cfg(i).opacity); }, [i](int d) { auto& o = labels::cfg(i).opacity; o = std::clamp(o + d * 0.1f, 0.1f, 1.f); labels::save(i); }, [i](double v) { labels::cfg(i).opacity = std::clamp((float)v, 0.1f, 1.f); labels::save(i); });
             sec("COLOR");
             labelChips([i](int k) { auto& l = labels::cfg(i); return l.r == LABEL_COLORS[k][0] && l.g == LABEL_COLORS[k][1] && l.b == LABEL_COLORS[k][2]; },
                        [i](int k) { auto& l = labels::cfg(i); l.r = LABEL_COLORS[k][0]; l.g = LABEL_COLORS[k][1]; l.b = LABEL_COLORS[k][2]; labels::save(i); });
@@ -557,7 +625,10 @@ void XyzMenu::rebuild(bool animate) {
         std::string st = r.mode == Mode::Record ? "Recording" : r.mode == Mode::Play ? "Playing" : "Idle";
         sec("BOT");
         txt("State: " + st);
-        pills({{"Record", [this] { startRecord(); this->later(false); }}, {"Stop", [this] { stopAll(true); this->later(false); }}, {"Step", [] { stepOnce(); }}});
+        pills({{"Record", [this] { startRecord(); this->later(false); }}, {"Stop", [this] { stopAll(true); this->later(false); }}, {"Step", [] { stepOnce(); }},
+               {"Take Over", [this] {
+                    if (takeOverNow()) this->onClose(nullptr);
+                    else Notification::create("Nothing is playing", NotificationIcon::Error)->show(); }}});
         tog("Frame Stepper", c.stepper, [](bool v) { cfg().stepper = v; }, "stepper");
         tog("Noclip", c.noclip, [](bool v) { cfg().noclip = v; saveCfg(); }, "noclip");
         sec("ACCURACY");
@@ -620,6 +691,8 @@ void XyzMenu::rebuild(bool animate) {
         tog("No Overwrite", c.noOverwrite, [](bool v) { cfg().noOverwrite = v; saveCfg(); });
         sec("PLAYBACK");
         num("Play Players", [] { return std::string(PLAYERS[std::clamp(cfg().playPlayers, 0, 2)]); }, [](int d) { auto& v = cfg().playPlayers; v = (v + d + 3) % 3; saveCfg(); });
+        tog("Take Over On Input", c.takeOver, [](bool v) { cfg().takeOver = v; saveCfg(); });
+        tog("Continue After Finish", c.continueEnd, [](bool v) { cfg().continueEnd = v; saveCfg(); });
         tog("Sequence", c.seqOn, [](bool v) { cfg().seqOn = v; saveCfg(); }, "seq");
         sec("LIBRARY");
         auto names = listMacros();
@@ -806,7 +879,23 @@ void XyzMenu::rebuild(bool animate) {
                 fit(v, 70.f, .42f, .1f);
                 rm->addChild(v);
                 auto get = rw.get; auto step = rw.step;
-                auto fix = [v, get] { v->setString(get().c_str()); fit(v, 70.f, .42f, .1f); };
+                Ref<CCLabelBMFont> vr = v;
+                auto fix = [vr, get] { vr->setString(get().c_str()); fit(vr, 70.f, .42f, .1f); };
+                if (rw.setv) {
+                    // tap the value to type it in
+                    auto box = CCNode::create();
+                    box->setContentSize({74, 20});
+                    auto bd = CCDrawNode::create();
+                    rrect(bd, {0, 0}, {74, 20}, 7, ccc4f(1, 1, 1, 0.07f), 1.f, ccc4f(1, 1, 1, 0.28f));
+                    box->addChild(bd);
+                    auto title = rw.label; auto setv = rw.setv;
+                    auto bi = CCMenuItemExt::createSpriteExtra(box, [title, get, setv, fix](auto) {
+                        XyzValuePopup::open(title, get(), [setv, fix](double val) { setv(val); fix(); });
+                    });
+                    bi->setPosition({cw - 74, 0});
+                    rm->addChild(bi, 0);
+                    v->setZOrder(1);
+                }
                 auto mi = makeRound("-", [step, fix] { step(-1); fix(); });
                 mi->setPosition({cw - 122, 0}); rm->addChild(mi);
                 auto pl = makeRound("+", [step, fix] { step(1); fix(); });
@@ -855,6 +944,7 @@ class $modify(XyzKeys, CCKeyboardDispatcher) {
         if (down && !repeat) {
             if (key == KEY_F6) { XyzMenu::toggle(); return true; }
             if (key == KEY_F7 && PlayLayer::get()) { stepOnce(); return true; }
+            if (key == KEY_F8) { takeOverNow(); return true; }
         }
         return CCKeyboardDispatcher::dispatchKeyboardMSG(key, down, repeat, ts);
     }
