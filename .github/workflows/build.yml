@@ -37,6 +37,8 @@ jobs:
     steps:
       - uses: geode-sdk/build-geode-mod/combine@main
         id: build
+        with:
+          optimize-pngs: false   # the PNG optimizer chokes on one of the packed images ("file is truncated")
       - uses: actions/upload-artifact@v4
         with:
           name: xyzBot
