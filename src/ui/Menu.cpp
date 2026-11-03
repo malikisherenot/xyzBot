@@ -209,6 +209,13 @@ static std::string helpText(std::string const& k) {
         {"Straight UFO P1", "Use Auto Straight UFO on Player 1."}, {"Straight UFO P2", "Use Auto Straight UFO on Player 2."},
         {"UFO Target Y P1", "The height Player 1's UFO is held at."}, {"UFO Target Y P2", "The height Player 2's UFO is held at."},
         {"UFO Threshold P1", "How far Player 1's UFO may drift from the target."}, {"UFO Threshold P2", "How far Player 2's UFO may drift from the target."},
+        {"Macro To Render", "The macro that plays while rendering. 'None' lets you play the level yourself."},
+        {"Width", "Video width in pixels. The height follows the shape of your screen."},
+        {"FPS", "Frames per second of the video."},
+        {"Bitrate (Mbps)", "Video quality. Higher looks better and makes a bigger file."},
+        {"Codec", "Video encoder. Auto picks the best one your device offers."},
+        {"End Tail (s)", "How many seconds keep recording after the level ends."},
+        {"Include Song Audio", "Adds the level's song to the video afterwards. It starts at the beginning of the song, so it may be off for StartPos or practice runs."},
         {"Menu Font", "Switches the menu text between GD's own font (old) and Arial (new)."},
         {"Button In Levels", "Shows the floating button while you play. Turn off to hide it until you pause."},
     };
@@ -254,6 +261,10 @@ static std::function<void(double)> numSetter(std::string const& k) {
     if (k == "Length") return I(&c.trajLen, 10, 2000);
     if (k == "Lookahead Ticks") return I(&c.pdLook, 1, 10);
     if (k == "Interval (s)") return I(&c.autosaveSec, 10, 3600);
+    if (k == "Width") return I(&c.renderW, 320, 3840);
+    if (k == "FPS") return I(&c.renderFps, 10, 240);
+    if (k == "Bitrate (Mbps)") return I(&c.renderBitrate, 1, 200);
+    if (k == "End Tail (s)") return I(&c.renderTail, 0, 30);
     return nullptr;
 }
 
@@ -402,13 +413,14 @@ void XyzMenu::onClose(CCObject*) {
 }
 void XyzMenu::doClose(float) { Popup::onClose(nullptr); }
 
-static char const* TABS[] = {"Bot", "Physics", "Visuals", "Macros", "Labels", "Assist", "Theme"};
-static constexpr int NTABS = 7;
+static char const* TABS[] = {"Bot", "Physics", "Visuals", "Macros", "Labels", "Assist", "Theme", "Render"};
+static constexpr int NTABS = 8;
+static float tabPitch(float menuH) { return std::min(29.f, (menuH - 52.f - 8.f) / NTABS); }
 
 void XyzMenu::moveHl(bool animate) {
     if (!m_hl) return;
     float h2 = m_h - 52.f;
-    CCPoint p = {16.f, 12.f + h2 - 6.f - 26.f - m_tab * 29.f};
+    CCPoint p = {16.f, 12.f + h2 - 6.f - 26.f - m_tab * tabPitch(m_h)};
     m_hl->stopAllActions();
     if (animate) m_hl->runAction(CCEaseExponentialOut::create(CCMoveTo::create(.28f, p)));
     else m_hl->setPosition(p);
@@ -445,7 +457,7 @@ void XyzMenu::buildSide() {
             this->moveHl(true);
             this->later(true);
         });
-        b->setPosition({10 + SW / 2, 12.f + h2 - 6.f - 13.f - i * 29.f});
+        b->setPosition({10 + SW / 2, 12.f + h2 - 6.f - 13.f - i * tabPitch(m_h)});
         menu->addChild(b);
     }
     this->moveHl(false);
@@ -789,6 +801,34 @@ void XyzMenu::rebuild(bool animate) {
         tog("Autoclicker P1", c.acOn[0], [](bool v) { cfg().acOn[0] = v; saveCfg(); }, "ac0");
         tog("Autoclicker P2", c.acOn[1], [](bool v) { cfg().acOn[1] = v; saveCfg(); }, "ac1");
         break;
+    case 7: {
+        static char const* CODEC_NAMES[] = {"Auto", "libx264", "h264_mediacodec", "libopenh264", "mpeg4"};
+        sec("RENDER");
+        txt(isRendering() ? "Rendering... press Stop Render to finish." : renderAvailable() ? "Ready. Open a level, then press Start Render." : "Needs the FFmpeg API mod (eclipse.ffmpeg-api).");
+        pills({{"Start Render", [this] {
+                    auto err = startRender();
+                    if (!err.empty()) { Notification::create(err, NotificationIcon::Error)->show(); return; }
+                    Notification::create("Render started. Resume the level.", NotificationIcon::Info)->show();
+                    this->onClose(nullptr); }},
+               {"Stop Render", [this] { renderStop(true); this->later(false); }}});
+        sec("SOURCE");
+        num("Macro To Render", [] { return cfg().renderMacro.empty() ? std::string("None (manual)") : cfg().renderMacro; }, [](int d) {
+            auto names = listMacros();
+            int idx = -1;
+            for (size_t i = 0; i < names.size(); ++i) if (names[i] == cfg().renderMacro) idx = (int)i;
+            int count = (int)names.size() + 1;                    // slot 0 means none
+            int slot = (idx + 1 + d + count) % count;
+            cfg().renderMacro = slot == 0 ? std::string() : names[slot - 1];
+            saveCfg(); });
+        sec("VIDEO");
+        num("Width", [] { return fmt::format("{}", cfg().renderW); }, [](int d) { cfg().renderW = std::clamp(cfg().renderW + d * 160, 320, 3840); saveCfg(); });
+        num("FPS", [] { return fmt::format("{}", cfg().renderFps); }, [](int d) { cfg().renderFps = std::clamp(cfg().renderFps + d * 10, 10, 240); saveCfg(); });
+        num("Bitrate (Mbps)", [] { return fmt::format("{}", cfg().renderBitrate); }, [](int d) { cfg().renderBitrate = std::clamp(cfg().renderBitrate + d, 1, 200); saveCfg(); });
+        num("Codec", [] { return std::string(CODEC_NAMES[std::clamp(cfg().renderCodec, 0, 4)]); }, [](int d) { auto& v = cfg().renderCodec; v = (v + d + 5) % 5; saveCfg(); });
+        num("End Tail (s)", [] { return fmt::format("{}", cfg().renderTail); }, [](int d) { cfg().renderTail = std::clamp(cfg().renderTail + d, 0, 30); saveCfg(); });
+        tog("Include Song Audio", c.renderAudio, [](bool v) { cfg().renderAudio = v; saveCfg(); });
+        break;
+    }
     default: {
         sec("INTERFACE");
         tog("Button In Levels", c.btnInLevel, [](bool v) { cfg().btnInLevel = v; saveCfg(); });
