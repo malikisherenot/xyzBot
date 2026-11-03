@@ -239,13 +239,37 @@ static void feed(GJBaseGameLayer* gl) {
     }
 }
 
+// Switch from playing a macro to recording: everything the macro already did is kept, the rest is dropped,
+// and new inputs are appended from the current tick.
+static void takeOver() {
+    auto& r = rt();
+    if (r.mode != Mode::Play) return;
+    Macro m = r.play;
+    m.inputs.resize(std::min(r.nextIn, m.inputs.size()));
+    m.fixes.resize(std::min(r.nextFix, m.fixes.size()));
+    m.ticks = r.tick;
+    r.rec = std::move(m);
+    r.continueName = r.playName;
+    r.mode = Mode::Record;
+    r.seekPending = false;
+    Notification::create(fmt::format("Recording from tick {}", r.tick), NotificationIcon::Info)->show();
+}
+
+bool takeOverNow() {
+    if (rt().mode != Mode::Play) return false;
+    takeOver();
+    return true;
+}
+
 static void closeTick(GJBaseGameLayer* pl) {
     auto& r = rt();
     if (r.mode == Mode::Play) {
         while (r.nextFix < r.play.fixes.size() && r.play.fixes[r.nextFix].tick <= r.tick)
             applyFix(pl, r.play.fixes[r.nextFix++]);
         r.tick++;
-        if (r.tick > r.play.ticks + 1) {
+        if (r.tick > r.play.ticks + 1 && cfg().continueEnd) {
+            takeOver();
+        } else if (r.tick > r.play.ticks + 1) {
             bool seq = cfg().seqOn && !cfg().seq.empty();
             stopAll(false);
             if (seq) queueInMainThread([] { seqNext(); });
@@ -297,6 +321,7 @@ class $modify(XyzGL, GJBaseGameLayer) {
         bool ext = !r.internal && !r.feeding && !r.resetting;
         if (ext && c.swapInput) p1 = !p1;
         bool p2 = !p1;
+        if (r.mode == Mode::Play && ext && c.takeOver && button >= 1 && button <= 3 && down) takeOver();
         if (r.mode == Mode::Play && !r.feeding && !r.resetting && c.blockInputs && covers(c.playPlayers, p2)) return;
         if (ext && button == 1 && !down && c.autoSwift && r.mode != Mode::Play && !takeover()) return;   // auto swift: releases are generated
         if (ext && button == 1) {
@@ -486,6 +511,7 @@ void seqNext() {
 
 bool startRecord() {
     auto& r = rt();
+    r.continueName.clear();
     if (auto pl = PlayLayer::get()) {
         r.mode = Mode::Record;
         pl->resetLevelFromStart();
@@ -506,8 +532,11 @@ bool startPlay(std::string const& name) {
     auto ed = LevelEditorLayer::get();
     if ((!pl && !ed) || !loadMacro(r.play, name)) return false;
     if (pl && !cfg().ignoreLevel && r.play.levelId != 0 && r.play.levelId != pl->m_level->m_levelID.value()) return false;
-    r.prevTpsVal = cfg().tpsVal; r.savedTps = cfg().tps;
+    if (!r.tpsOverridden) { r.prevTpsVal = cfg().tpsVal; r.savedTps = cfg().tps; }
     cfg().tps = true; cfg().tpsVal = (float)r.play.tps;
+    r.tpsOverridden = true;
+    r.playName = name;
+    r.continueName.clear();
     r.mode = Mode::Play;
     if (pl) pl->resetLevelFromStart();
     else Notification::create(activeLayer() ? "Restart the playtest to begin playback" : "Playback armed: start the playtest", NotificationIcon::Info)->show();
@@ -518,12 +547,13 @@ void stopAll(bool save) {
     auto& r = rt();
     if (r.mode == Mode::Off) return;
     if (r.mode == Mode::Record && save && !r.rec.inputs.empty()) {
-        auto name = macroFileName();
+        auto name = r.continueName.empty() ? macroFileName() : r.continueName;
         if (cfg().noOverwrite) name = uniqueMacroName(name);
         saveMacro(r.rec, name);
         Notification::create("Macro saved", NotificationIcon::Success)->show();
     }
-    if (r.mode == Mode::Play) { cfg().tps = r.savedTps; cfg().tpsVal = r.prevTpsVal; }
+    if (r.tpsOverridden) { cfg().tps = r.savedTps; cfg().tpsVal = r.prevTpsVal; r.tpsOverridden = false; }
+    r.continueName.clear();
     r.mode = Mode::Off;
     r.held.fill(false);
 }
