@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.11.0
+- Tap the number in any value row (TPS, speed, lengths, colors, ...) to type an exact value
+
+## v1.10.0
+- Take Over: switch from playing a macro to recording it (button, F8, or automatically on your first tap)
+- Continue After Finish: a macro keeps recording at its end
+- Continued macros are saved back under their own name
+
 ## v1.9.0
 - Ported from Echo (GPL-3.0): Fix Rotation Bug (visual tilt of ship, UFO, wave and swing)
 - Macro tools: Record Players and Play Players (Player 1 or 2 only), Auto Name Replay, No Overwrite with rename formats
