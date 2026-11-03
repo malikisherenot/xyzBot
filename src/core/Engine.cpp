@@ -451,12 +451,14 @@ class $modify(XyzPL, PlayLayer) {
     void levelComplete() {
         if (rt().mode != Mode::Off) stopAll(rt().mode == Mode::Record);
         PlayLayer::levelComplete();
+        renderNotifyEnd();
     }
 
     void onQuit() {
         if (rt().mode != Mode::Off) stopAll(rt().mode == Mode::Record);
         vis::detach();
         vis::rotClear();
+        renderStop(true);
         PlayLayer::onQuit();
     }
 };
@@ -546,6 +548,7 @@ bool startPlay(std::string const& name) {
 void stopAll(bool save) {
     auto& r = rt();
     if (r.mode == Mode::Off) return;
+    if (r.mode == Mode::Play && isRendering()) renderNotifyEnd();
     if (r.mode == Mode::Record && save && !r.rec.inputs.empty()) {
         auto name = r.continueName.empty() ? macroFileName() : r.continueName;
         if (cfg().noOverwrite) name = uniqueMacroName(name);

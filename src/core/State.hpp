@@ -53,6 +53,9 @@ struct Cfg {
     bool btnInLevel = true;
     // macro tools and rotation fix (ported from Echo, GPL-3.0)
     bool fixRotation = false;
+    int renderW = 1280, renderFps = 60, renderBitrate = 12, renderCodec = 0, renderTail = 2;
+    bool renderAudio = true;
+    std::string renderMacro;
     bool takeOver = false, continueEnd = false;
     bool autoName = true, noOverwrite = false;
     int renameFmt = 0;
@@ -134,6 +137,14 @@ std::string uniqueMacroName(std::string const& base);
 bool mergeMacros(std::string const& a, std::string const& b, std::string& outName);
 void seqNext();
 bool takeOverNow();
+// video rendering (needs the eclipse.ffmpeg-api mod)
+bool renderAvailable();
+bool isRendering();
+float renderFps();
+std::string startRender();
+void renderStop(bool mixAudio);
+void renderNotifyEnd();
+void renderCapture();
 void pressButton(GJBaseGameLayer* gl, bool down, int p);
 void assistTick(GJBaseGameLayer* gl);
 void flipOnReset();
