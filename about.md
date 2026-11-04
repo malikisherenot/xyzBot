@@ -2,7 +2,7 @@
 
 - Tick-accurate record/replay
 - TPS bypass (high TPS safe), speedhack (+audio), frame stepper, noclip
-- Hitboxes, hitbox trail, trajectory
+- Hitboxes, hitbox trail, trajectory, wave drag fix
 - 21 labels (Silicate set): tick, position, velocity, CPS, orbs, more
 - Layout mode
 - Prevent Death, Maintain Gravity, Mirror Inputs, No Mirror Portals

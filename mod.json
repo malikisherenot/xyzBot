@@ -6,7 +6,7 @@
     "mac": "2.2081",
     "ios": "2.2081"
   },
-  "version": "v1.11.0",
+  "version": "v1.13.0",
   "id": "itzmalikhere.xyzbot",
   "name": "xyzBot",
   "developer": "itzmalikhere",
@@ -39,6 +39,11 @@
     "geode.node-ids": {
       "version": ">=1.0.0",
       "importance": "required"
+    },
+    "eclipse.ffmpeg-api": {
+      "version": ">=v2.0.0",
+      "required": false,
+      "platforms": ["android"]
     }
   }
 }

@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.13.0
+- New Wave Drag Fix (Visuals > Fixes): correct wave trail on D blocks, slopes, portals, spider orbs/pads and at high TPS (port of NyteLyte's Wave Trail Drag Fix, GPL-3.0)
+
+## v1.12.1
+- Render: FFmpeg API support is now enabled on Android builds (same setup as Echo), dependency declared as optional for Android
+
+## v1.12.0
+- Rendering: Start Render / Stop Render in the new Render tab, using the eclipse.ffmpeg-api mod
+- Fixed frame time while rendering, optional macro to render, resolution, FPS, bitrate, codec, end tail, song audio
+
 ## v1.11.0
 - Tap the number in any value row (TPS, speed, lengths, colors, ...) to type an exact value
 
