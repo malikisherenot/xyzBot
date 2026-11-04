@@ -164,6 +164,7 @@ static std::string helpText(std::string const& k) {
         {"Take Over On Input", "While a macro plays, your first tap takes control: the macro stops there and keeps recording what you do. The part already played is kept."},
         {"Continue After Finish", "When a macro reaches its end, it keeps recording instead of stopping, so you can add more to it."},
         {"Fix Rotation Bug", "Fixes the ship, UFO, wave and swing tilt looking wrong at high TPS. Only changes how it looks, not the physics."},
+        {"Wave Drag Fix", "Fixes the wave trail on D blocks (drag), slopes, portals and spider orbs, also at high TPS. Only changes the trail, not the physics."},
         {"Record Players", "Which players get recorded. Pick one player to record the other later and merge the two macros."},
         {"Play Players", "Which players the macro controls during playback. You control the other player yourself."},
         {"Auto Name Replay", "Names a new macro after the level. When off, it is called 'macro'."},
@@ -670,6 +671,7 @@ void XyzMenu::rebuild(bool animate) {
         tog("Show Trajectory", c.traj, [](bool v) { cfg().traj = v; saveCfg(); }, "traj");
         sec("FIXES");
         tog("Fix Rotation Bug", c.fixRotation, [](bool v) { cfg().fixRotation = v; saveCfg(); });
+        tog("Wave Drag Fix", c.waveDragFix, [](bool v) { cfg().waveDragFix = v; saveCfg(); });
         sec("LEVEL");
         tog("Layout Mode (reload level)", c.layout, [](bool v) { cfg().layout = v; saveCfg(); }, "layout");
         sec("EFFECTS");
