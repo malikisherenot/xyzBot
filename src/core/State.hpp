@@ -53,6 +53,7 @@ struct Cfg {
     bool btnInLevel = true;
     // macro tools and rotation fix (ported from Echo, GPL-3.0)
     bool fixRotation = false;
+    bool waveDragFix = false;
     int renderW = 1280, renderFps = 60, renderBitrate = 12, renderCodec = 0, renderTail = 2;
     bool renderAudio = true;
     std::string renderMacro;

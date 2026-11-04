@@ -22,7 +22,7 @@ void loadCfg() {
     LD(autosave, bool); LD(autosaveSec, int); LD(labels, bool);
     LD(ssbFix, bool); LD(ssbInvert, bool); LD(legacyShip, bool); LD(legacyShipPct, int);
     LD(btnInLevel, bool);
-    LD(fixRotation, bool); LD(renderW, int); LD(renderFps, int); LD(renderBitrate, int); LD(renderCodec, int); LD(renderTail, int); LD(renderAudio, bool);
+    LD(fixRotation, bool); LD(waveDragFix, bool); LD(renderW, int); LD(renderFps, int); LD(renderBitrate, int); LD(renderCodec, int); LD(renderTail, int); LD(renderAudio, bool);
     c.renderMacro = m->getSavedValue<std::string>("renderMacro", ""); LD(takeOver, bool); LD(continueEnd, bool); LD(autoName, bool); LD(noOverwrite, bool); LD(renameFmt, int); LD(recPlayers, int); LD(playPlayers, int);
     LD(swapInput, bool); LD(seqOn, bool); LD(seqRandom, bool);
     c.inverse[0] = m->getSavedValue<bool>("inverse0", false); c.inverse[1] = m->getSavedValue<bool>("inverse1", false);
@@ -73,7 +73,7 @@ void saveCfg() {
     SV(autosave, bool); SV(autosaveSec, int); SV(labels, bool);
     SV(ssbFix, bool); SV(ssbInvert, bool); SV(legacyShip, bool); SV(legacyShipPct, int);
     SV(btnInLevel, bool);
-    SV(fixRotation, bool); SV(renderW, int); SV(renderFps, int); SV(renderBitrate, int); SV(renderCodec, int); SV(renderTail, int); SV(renderAudio, bool);
+    SV(fixRotation, bool); SV(waveDragFix, bool); SV(renderW, int); SV(renderFps, int); SV(renderBitrate, int); SV(renderCodec, int); SV(renderTail, int); SV(renderAudio, bool);
     m->setSavedValue<std::string>("renderMacro", c.renderMacro); SV(takeOver, bool); SV(continueEnd, bool); SV(autoName, bool); SV(noOverwrite, bool); SV(renameFmt, int); SV(recPlayers, int); SV(playPlayers, int);
     SV(swapInput, bool); SV(seqOn, bool); SV(seqRandom, bool);
     m->setSavedValue<bool>("inverse0", c.inverse[0]); m->setSavedValue<bool>("inverse1", c.inverse[1]);
