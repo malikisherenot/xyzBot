@@ -8,7 +8,7 @@
 #include <Geode/binding/LevelTools.hpp>
 #include <filesystem>
 
-#if __has_include(<eclipse.ffmpeg-api/include/events.hpp>)
+#if XYZ_FFMPEG_API && __has_include(<eclipse.ffmpeg-api/include/events.hpp>)
 #include <eclipse.ffmpeg-api/include/events.hpp>
 #define XYZ_FFMPEG 1
 #endif
