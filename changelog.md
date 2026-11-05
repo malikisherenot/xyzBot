@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.14.0
+- Accuracy modes like xdBot: Vanilla, Input Fixes (position stored at every click), Frame Fixes (every tick). Macros play with whatever fixes they contain
+- Much wider macro import: xdBot .gdr / .gdr.json (with their frame fixes and old frame offsets), legacy .xd, Silicate v1 .slc, GDR1 from other bots, .txt/.csv
+- Macro search in the Macros tab; Recording and Playback options moved to the Bot tab
+- TPS optimization: ticks of a frame that are never drawn skip the progress bar update (Fast Sub-Ticks); optional visibility skip; less work per tick
+
 ## v1.13.0
 - New Wave Drag Fix (Visuals > Fixes): correct wave trail on D blocks, slopes, portals, spider orbs/pads and at high TPS (port of NyteLyte's Wave Trail Drag Fix, GPL-3.0)
 
