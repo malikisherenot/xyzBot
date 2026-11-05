@@ -165,6 +165,9 @@ static std::string helpText(std::string const& k) {
         {"Continue After Finish", "When a macro reaches its end, it keeps recording instead of stopping, so you can add more to it."},
         {"Fix Rotation Bug", "Fixes the ship, UFO, wave and swing tilt looking wrong at high TPS. Only changes how it looks, not the physics."},
         {"Wave Drag Fix", "Fixes the wave trail on D blocks (drag), slopes, portals and spider orbs, also at high TPS. Only changes the trail, not the physics."},
+        {"Accuracy", "Vanilla: no position corrections. Input Fixes: the player position is stored and restored at every click. Frame Fixes: stored and restored every tick. A macro plays with whatever fixes it contains, so macros from xdBot load in any mode."},
+        {"Fast Sub-Ticks", "At high TPS, skips the progress bar update on the ticks of a frame that are never drawn. Does not change the physics."},
+        {"Skip Visibility On Sub-Ticks", "Experimental. Also skips the object visibility refresh on ticks that are never drawn. Faster on big levels, turn off if anything looks wrong."},
         {"Record Players", "Which players get recorded. Pick one player to record the other later and merge the two macros."},
         {"Play Players", "Which players the macro controls during playback. You control the other player yourself."},
         {"Auto Name Replay", "Names a new macro after the level. When off, it is called 'macro'."},
@@ -303,6 +306,37 @@ public:
     }
 };
 
+// Small window for typing text (macro search).
+class XyzTextPopup : public geode::Popup {
+    TextInput* m_input = nullptr;
+    std::function<void(std::string)> m_cb;
+public:
+    static void open(std::string title, std::string cur, std::function<void(std::string)> cb) {
+        auto p = new XyzTextPopup();
+        if (p->setup(title, cur, std::move(cb))) { p->autorelease(); p->show(); }
+        else delete p;
+    }
+    bool setup(std::string const& title, std::string const& cur, std::function<void(std::string)> cb) {
+        m_cb = std::move(cb);
+        if (!Popup::init(250.f, 135.f)) return false;
+        this->setTitle(title);
+        m_input = TextInput::create(180.f, "Type to search", "bigFont.fnt");
+        m_input->setString(cur);
+        m_input->setPosition({125.f, 72.f});
+        m_mainLayer->addChild(m_input);
+        auto menu = CCMenu::create();
+        menu->setPosition({0, 0});
+        m_mainLayer->addChild(menu);
+        auto ok = CCMenuItemExt::createSpriteExtra(ButtonSprite::create("Search"), [this](auto) {
+            m_cb(m_input->getString());
+            this->onClose(nullptr);
+        });
+        ok->setPosition({125.f, 28.f});
+        menu->addChild(ok);
+        return true;
+    }
+};
+
 XyzMenu* XyzMenu::create() {
     auto r = new XyzMenu();
     if (r->init()) { r->autorelease(); return r; }
@@ -416,6 +450,8 @@ void XyzMenu::doClose(float) { Popup::onClose(nullptr); }
 
 static char const* TABS[] = {"Bot", "Physics", "Visuals", "Macros", "Labels", "Assist", "Theme", "Render"};
 static constexpr int NTABS = 8;
+static char const* PLAYERS[] = {"Both", "Player 1 only", "Player 2 only"};
+static char const* ACCURACY[] = {"Vanilla", "Input Fixes", "Frame Fixes"};
 static float tabPitch(float menuH) { return std::min(29.f, (menuH - 52.f - 8.f) / NTABS); }
 
 void XyzMenu::moveHl(bool animate) {
@@ -519,6 +555,9 @@ void XyzMenu::rebuild(bool animate) {
                 auto& v = cfg().tpsVal; float s = v >= 10000 ? 5000 : v >= 1000 ? 500 : v >= 240 ? 60 : 10;
                 v = std::clamp(v + d * s, 1.f, 1000000.f); saveCfg(); });
             num("Frame Budget (ms)", [] { return fmt::format("{}", (int)cfg().budgetMs); }, [](int d) { cfg().budgetMs = std::clamp(cfg().budgetMs + d, 1.f, 100.f); saveCfg(); });
+            sec("OPTIMIZATION");
+            tog("Fast Sub-Ticks", c.fastSub, [](bool v) { cfg().fastSub = v; saveCfg(); });
+            tog("Skip Visibility On Sub-Ticks", c.skipVis, [](bool v) { cfg().skipVis = v; saveCfg(); });
         } else if (sub == "speed") {
             sec("SPEEDHACK SETTINGS");
             num("Speed", [] { return fmt::format("{:.2f}", cfg().speedVal); }, [](int d) { cfg().speedVal = std::clamp(cfg().speedVal + d * 0.1f, 0.05f, 100.f); saveCfg(); });
@@ -645,9 +684,18 @@ void XyzMenu::rebuild(bool animate) {
         tog("Frame Stepper", c.stepper, [](bool v) { cfg().stepper = v; }, "stepper");
         tog("Noclip", c.noclip, [](bool v) { cfg().noclip = v; saveCfg(); }, "noclip");
         sec("ACCURACY");
-        tog("Frame Fixes", c.fixes, [](bool v) { cfg().fixes = v; saveCfg(); });
+        num("Accuracy", [] { return std::string(ACCURACY[std::clamp(cfg().accuracy, 0, 2)]); }, [](int d) { auto& v = cfg().accuracy; v = (v + d + 3) % 3; saveCfg(); });
         tog("Ignore Level Check", c.ignoreLevel, [](bool v) { cfg().ignoreLevel = v; saveCfg(); });
         tog("Block Inputs In Playback", c.blockInputs, [](bool v) { cfg().blockInputs = v; saveCfg(); });
+        sec("RECORDING");
+        num("Record Players", [] { return std::string(PLAYERS[std::clamp(cfg().recPlayers, 0, 2)]); }, [](int d) { auto& v = cfg().recPlayers; v = (v + d + 3) % 3; saveCfg(); });
+        tog("Auto Name Replay", c.autoName, [](bool v) { cfg().autoName = v; saveCfg(); }, "naming");
+        tog("No Overwrite", c.noOverwrite, [](bool v) { cfg().noOverwrite = v; saveCfg(); });
+        sec("PLAYBACK");
+        num("Play Players", [] { return std::string(PLAYERS[std::clamp(cfg().playPlayers, 0, 2)]); }, [](int d) { auto& v = cfg().playPlayers; v = (v + d + 3) % 3; saveCfg(); });
+        tog("Take Over On Input", c.takeOver, [](bool v) { cfg().takeOver = v; saveCfg(); });
+        tog("Continue After Finish", c.continueEnd, [](bool v) { cfg().continueEnd = v; saveCfg(); });
+        tog("Sequence", c.seqOn, [](bool v) { cfg().seqOn = v; saveCfg(); }, "seq");
         sec("AUTOMATION");
         tog("Autosave While Recording", c.autosave, [](bool v) { cfg().autosave = v; saveCfg(); }, "autosave");
         tog("Auto Exit On Finish", c.autoExit, [](bool v) { cfg().autoExit = v; saveCfg(); });
@@ -686,32 +734,36 @@ void XyzMenu::rebuild(bool animate) {
         tog("Audio Fade In/Out", c.fadeAudio, [](bool v) { cfg().fadeAudio = v; saveCfg(); }, "afade");
         break;
     case 3: {
-        static char const* PLAYERS[] = {"Both", "Player 1 only", "Player 2 only"};
         sec("MACROS");
         pills({{"Record", [this] { startRecord(); this->onClose(nullptr); }}, {"Stop", [this] { stopAll(true); this->later(false); }},
                {"Import", [this] {
-                    int n = 0; std::error_code ec;
+                    int n = 0, bad = 0; std::string why; std::error_code ec;
                     for (auto& e : std::filesystem::directory_iterator(macroDir(), ec)) {
-                        auto ext = e.path().extension().string();
-                        if (ext != ".gdr" && ext != ".txt" && ext != ".csv") continue;
+                        if (!canImport(e.path())) continue;
+                        auto name = e.path().filename().string();
+                        auto low = name; std::transform(low.begin(), low.end(), low.begin(), [](unsigned char ch) { return (char)std::tolower(ch); });
+                        if (low.size() > 9 && low.compare(low.size() - 9, 9, ".gdr.json") == 0) name.resize(name.size() - 9);
+                        else name = e.path().stem().string();
                         Macro m;
-                        if (importMacro(m, e.path()) && saveMacro(m, e.path().stem().string())) n++;
+                        if (importMacro(m, e.path()) && saveMacro(m, name)) n++;
+                        else { bad++; why = importError(); }
                     }
-                    Notification::create(fmt::format("Imported {}", n), NotificationIcon::Info)->show();
+                    auto msg = fmt::format("Imported {}", n);
+                    if (bad) msg += fmt::format(", {} failed{}", bad, why.empty() ? "" : " (" + why + ")");
+                    Notification::create(msg, bad ? NotificationIcon::Warning : NotificationIcon::Success)->show();
                     this->later(false); }}});
-        sec("RECORDING");
-        num("Record Players", [] { return std::string(PLAYERS[std::clamp(cfg().recPlayers, 0, 2)]); }, [](int d) { auto& v = cfg().recPlayers; v = (v + d + 3) % 3; saveCfg(); });
-        tog("Auto Name Replay", c.autoName, [](bool v) { cfg().autoName = v; saveCfg(); }, "naming");
-        tog("No Overwrite", c.noOverwrite, [](bool v) { cfg().noOverwrite = v; saveCfg(); });
-        sec("PLAYBACK");
-        num("Play Players", [] { return std::string(PLAYERS[std::clamp(cfg().playPlayers, 0, 2)]); }, [](int d) { auto& v = cfg().playPlayers; v = (v + d + 3) % 3; saveCfg(); });
-        tog("Take Over On Input", c.takeOver, [](bool v) { cfg().takeOver = v; saveCfg(); });
-        tog("Continue After Finish", c.continueEnd, [](bool v) { cfg().continueEnd = v; saveCfg(); });
-        tog("Sequence", c.seqOn, [](bool v) { cfg().seqOn = v; saveCfg(); }, "seq");
+        pills({{"Search", [this] { XyzTextPopup::open("Search Macros", m_query, [this](std::string q) { m_query = std::move(q); this->later(false); }); }},
+               {"Clear Search", [this] { m_query.clear(); this->later(false); }}});
         sec("LIBRARY");
         auto names = listMacros();
+        if (!m_query.empty()) {
+            auto lower = [](std::string s) { std::transform(s.begin(), s.end(), s.begin(), [](unsigned char ch) { return (char)std::tolower(ch); }); return s; };
+            auto q = lower(m_query); size_t total = names.size();
+            names.erase(std::remove_if(names.begin(), names.end(), [&](std::string const& n) { return lower(n).find(q) == std::string::npos; }), names.end());
+            txt(fmt::format("Search \"{}\": {} of {}", m_query, names.size(), total));
+        }
         if (!m_mergeBase.empty()) txt("Merge base: " + m_mergeBase + ". Tap Merge on another macro, or on it again to cancel.");
-        if (names.empty()) txt("No macros yet. Drop .gdr/.txt files into the macros folder and press Import.");
+        if (names.empty()) txt(m_query.empty() ? "No macros yet. Drop .gdr, .gdr.json, .xd, .slc or .txt files into the macros folder and press Import." : "No macro matches.");
         for (auto& n : names) {
             custom([this, n](CCMenu* menu, float y, float w) {
                 std::error_code ec;
