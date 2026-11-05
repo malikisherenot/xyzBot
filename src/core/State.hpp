@@ -28,7 +28,8 @@ struct Cfg {
     float speedVal = 1.f;
     bool stepper = false;
     bool noclip = false;
-    bool fixes = true;
+    int accuracy = 2;   // 0 vanilla, 1 input fixes, 2 frame fixes
+    bool fastSub = true, skipVis = false;
     bool ignoreLevel = false;
     bool hitboxes = false;
     bool hbPlayer = true, hbSolid = true, hbHazard = true, hbSpecial = true, hbRotated = true;
@@ -169,6 +170,8 @@ std::vector<std::string> listMacros();
 bool saveMacro(Macro const& m, std::string const& name);
 bool loadMacro(Macro& m, std::string const& name);
 bool importMacro(Macro& m, std::filesystem::path const& file);
+bool canImport(std::filesystem::path const& file);
+std::string const& importError();
 
 bool startRecord();
 bool startPlay(std::string const& name);

@@ -79,11 +79,14 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
         bool blocked = false;
         auto t0 = std::chrono::steady_clock::now();
         double budget = std::max(1.0, (double)c.budgetMs);
+        bool pd = pdActive(pl);
+        if (!pd) r.frozen = false;
         while (done < n) {
             r.subTick = done + 1 < n;
-            if (!this->tickOnce(pl, step)) { blocked = true; break; }
+            if (pd) { if (!this->tickOnce(pl, step)) { blocked = true; break; } }
+            else GJBaseGameLayer::update((float)step);
             ++done;
-            if ((done & 15) == 0 && std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() > budget) break;
+            if ((done & 7) == 0 && std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() > budget) break;
         }
         r.subTick = false;
         r.leftover = (blocked || done < n) ? 0.0 : acc - step * (double)done;

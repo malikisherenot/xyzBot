@@ -2,6 +2,7 @@
 #include <cstring>
 #include <random>
 #include "State.hpp"
+#include <cmath>
 #include "../vis/Vis.hpp"
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
@@ -213,8 +214,8 @@ static void applyFix(GJBaseGameLayer* pl, Fix const& f) {
     auto p = f.p2 ? pl->m_player2 : pl->m_player1;
     if (!p || (f.p2 && !pl->m_gameState.m_isDualMode)) return;
     p->setPosition({f.x, f.y});
-    p->setRotation(f.rot);
-    p->m_yVelocity = f.yv;
+    if (!std::isnan(f.rot)) p->setRotation(f.rot);   // imported fixes may not carry rotation / velocity
+    if (!std::isnan(f.yv)) p->m_yVelocity = f.yv;
 }
 
 static void feed(GJBaseGameLayer* gl) {
@@ -261,11 +262,24 @@ bool takeOverNow() {
     return true;
 }
 
+// state of both players after tick `tick`, stored as a frame fix
+static void pushFixes(GJBaseGameLayer* pl, uint32_t tick) {
+    auto& r = rt();
+    auto add = [&](PlayerObject* p, bool p2) {
+        if (p) r.rec.fixes.push_back({tick, p2, p->getPositionX(), p->getPositionY(), p->getRotation(), (float)p->m_yVelocity});
+    };
+    if (covers(cfg().recPlayers, false)) add(pl->m_player1, false);
+    if (pl->m_gameState.m_isDualMode && covers(cfg().recPlayers, true)) add(pl->m_player2, true);
+}
+
 static void closeTick(GJBaseGameLayer* pl) {
     auto& r = rt();
     if (r.mode == Mode::Play) {
-        while (r.nextFix < r.play.fixes.size() && r.play.fixes[r.nextFix].tick <= r.tick)
-            applyFix(pl, r.play.fixes[r.nextFix++]);
+        bool useFix = cfg().accuracy > 0;   // vanilla ignores the fixes stored in the macro
+        while (r.nextFix < r.play.fixes.size() && r.play.fixes[r.nextFix].tick <= r.tick) {
+            if (useFix) applyFix(pl, r.play.fixes[r.nextFix]);
+            r.nextFix++;
+        }
         r.tick++;
         if (r.tick > r.play.ticks + 1 && cfg().continueEnd) {
             takeOver();
@@ -281,19 +295,13 @@ static void closeTick(GJBaseGameLayer* pl) {
             });
         }
     } else if (r.mode == Mode::Record) {
-        if (cfg().fixes) {
-            auto add = [&](PlayerObject* p, bool p2) {
-                if (p) r.rec.fixes.push_back({r.tick, p2, p->getPositionX(), p->getPositionY(), p->getRotation(), (float)p->m_yVelocity});
-            };
-            if (covers(cfg().recPlayers, false)) add(pl->m_player1, false);
-            if (pl->m_gameState.m_isDualMode && covers(cfg().recPlayers, true)) add(pl->m_player2, true);
-        }
+        if (cfg().accuracy == 2) pushFixes(pl, r.tick);
         r.tick++;
         r.rec.ticks = r.tick;
     } else {
         r.tick++;
     }
-    {
+    if (cfg().ssbFix || cfg().labels) {
         float f = ssbFactor();
         bool act = std::abs(f - 1.f) > 1e-6f;
         if (act && !r.ssbActive) r.ssbEvents++;
@@ -330,6 +338,8 @@ class $modify(XyzGL, GJBaseGameLayer) {
             if (takeover() && r.mode != Mode::Play) return;
         }
         if (r.mode == Mode::Record && !r.resetting && button >= 1 && button <= 3 && covers(c.recPlayers, p2)) {
+            // input fixes: store where the players are right before this input (one fix per tick)
+            if (c.accuracy == 1 && r.tick > 0 && (r.rec.fixes.empty() || r.rec.fixes.back().tick < r.tick - 1)) pushFixes(this, r.tick - 1);
             r.held[hi(button, p2)] = down;
             r.rec.inputs.push_back({r.tick, (uint8_t)button, down, p2});
         }
