@@ -6,7 +6,6 @@
 using namespace geode::prelude;
 using namespace xyz::draw;
 
-// On-screen frame stepper controls for touch devices: Step, +N, Hold (runs slowly while held), Run (turns the stepper off).
 class XyzStepBar : public CCLayer {
     static constexpr int N = 4;
     CCDrawNode* m_art = nullptr;

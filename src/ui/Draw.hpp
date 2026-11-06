@@ -4,11 +4,7 @@
 #include <vector>
 #include <algorithm>
 
-// Shared drawing helpers. CCDrawNode blends premultiplied, so every color is premultiplied here,
-// and polygons are de-duplicated (zero-length edges make the border shader spike).
 namespace xyz::draw {
-// Arial Italic is compiled by Geode from resources/arial-italic.ttf (mod.json "fonts"). If it cannot be
-// created, everything falls back to GD's bigFont so the UI never breaks.
 constexpr int ARIAL_TAG = 0x5A7;
 inline bool& fontBad() { static bool b = false; return b; }
 inline std::string const& fontFile() {
@@ -25,8 +21,6 @@ inline cocos2d::CCLabelBMFont* mkLabelStyle(char const* text, int style) {
 }
 inline cocos2d::CCLabelBMFont* mkLabel(char const* text) { return mkLabelStyle(text, xyz::cfg().menuFont); }
 
-// Arial is tagged so the size matches GD's own font: the ratio of the two fonts' line heights is measured
-// once at runtime (whatever size Geode compiled the font at), then applied to every size set below.
 inline float fontK() {
     static float k = 0.f;
     if (k > 0.f) return k;

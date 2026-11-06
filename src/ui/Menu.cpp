@@ -239,7 +239,6 @@ static CCMenuItemSpriteExtra* makeHelp(std::string title, std::string text) {
     return CCMenuItemExt::createSpriteExtra(node, [title, text](auto) { FLAlertLayer::create(title.c_str(), text, "OK")->show(); });
 }
 
-// Setters used when a value is typed in. Rows that depend on an index set their own.
 static std::function<void(double)> numSetter(std::string const& k) {
     auto& c = cfg();
     auto F = [](float* p, float lo, float hi) { return std::function<void(double)>([p, lo, hi](double v) { *p = std::clamp((float)v, lo, hi); saveCfg(); }); };
@@ -272,7 +271,6 @@ static std::function<void(double)> numSetter(std::string const& k) {
     return nullptr;
 }
 
-// Small window for typing an exact number.
 class XyzValuePopup : public geode::Popup {
     TextInput* m_input = nullptr;
     std::function<void(double)> m_cb;
@@ -306,7 +304,6 @@ public:
     }
 };
 
-// Small window for typing text (macro search).
 class XyzTextPopup : public geode::Popup {
     TextInput* m_input = nullptr;
     std::function<void(std::string)> m_cb;
@@ -366,7 +363,7 @@ bool XyzMenu::init() {
     auto ws = CCDirector::get()->getWinSize();
     m_w = std::min(ws.width - 30.f, 470.f);
     m_h = std::min(ws.height - 24.f, 280.f);
-    m_glass = glass::create({m_w, m_h}, 16.f);   // snapshot before this popup joins the scene
+    m_glass = glass::create({m_w, m_h}, 16.f);
     m_noElasticity = true;
     if (!Popup::init(m_w, m_h)) return false;
     if (m_bgSprite) m_bgSprite->setVisible(false);
@@ -870,7 +867,7 @@ void XyzMenu::rebuild(bool animate) {
             auto names = listMacros();
             int idx = -1;
             for (size_t i = 0; i < names.size(); ++i) if (names[i] == cfg().renderMacro) idx = (int)i;
-            int count = (int)names.size() + 1;                    // slot 0 means none
+            int count = (int)names.size() + 1;
             int slot = (idx + 1 + d + count) % count;
             cfg().renderMacro = slot == 0 ? std::string() : names[slot - 1];
             saveCfg(); });
@@ -976,7 +973,6 @@ void XyzMenu::rebuild(bool animate) {
                 Ref<CCLabelBMFont> vr = v;
                 auto fix = [vr, get] { vr->setString(get().c_str()); fit(vr, 70.f, .42f, .1f); };
                 if (rw.setv) {
-                    // tap the value to type it in
                     auto box = CCNode::create();
                     box->setContentSize({74, 20});
                     auto bd = CCDrawNode::create();
