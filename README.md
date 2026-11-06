@@ -1,4 +1,21 @@
 # xyzBot
 
-Geode mod for GD 2.2081. GPL-3.0. Build: `geode build`.
-Macros: save dir `macros/`, native `.xyz`, import `.gdr` / `.txt` (`tick,button,down,p2` per line).
+~ Maximilist geode bot for 2.2081.
+
+~ Format Support ; 
+
+- .slc3 (legacy versions included)
+- .gdr (.gdr2 support soon...)
+- .xd
+- .tcm (v1 & v2)
+- .echo (old, .json, .txt versions included & legacy versions included)
+- .xyz (duh...)
+
+Platform Support ;
+
+~ android32 🟢 
+~ android64 🟢
+~ windows 🟢
+~ macOS 🟡 {untested}
+~ iOS 🔴 {highly expiremental}
+
