@@ -1,5 +1,8 @@
 # Changelog
 
+## v1.14.1
+- Import: Silicate v2 and v3 .slc (restarts keep only the last attempt), TCBot .tcm, old Echo .echo, Echo json and Echo plain text
+
 ## v1.14.0
 - Accuracy modes like xdBot: Vanilla, Input Fixes (position stored at every click), Frame Fixes (every tick). Macros play with whatever fixes they contain
 - Much wider macro import: xdBot .gdr / .gdr.json (with their frame fixes and old frame offsets), legacy .xd, Silicate v1 .slc, GDR1 from other bots, .txt/.csv
