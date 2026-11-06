@@ -1,5 +1,4 @@
-// Video rendering. The game is run one video frame per update (fixed frame time), every frame is drawn into a render
-// texture, read back and handed to the eclipse.ffmpeg-api mod for encoding. The way frames are handed over follows Echo (GPL-3.0).
+// Video rendering; frames are handed to eclipse.ffmpeg-api the way Echo (GPL-3.0) does it.
 #include "../core/State.hpp"
 #include <Geode/modify/CCDirector.hpp>
 #include <Geode/ui/OverlayManager.hpp>
@@ -61,7 +60,6 @@ std::string startRender() {
     if (!pl) return "Open a level first";
     auto& c = cfg();
 
-    // video size: the width you chose, height follows the screen's shape (both even)
     auto ws = CCDirector::get()->getWinSize();
     g_w = std::clamp(c.renderW, 320, 3840) & ~1;
     g_h = (int)std::lround(g_w * ws.height / ws.width) & ~1;
@@ -104,7 +102,6 @@ std::string startRender() {
     if (!g_rt) { g_enc->stop(); g_enc.reset(); return "Could not create the render texture"; }
     g_buf.assign((size_t)g_w * g_h * 4, 0);
 
-    // the song, for muxing afterwards
     g_song.clear();
     if (c.renderAudio && pl->m_level) {
         if (pl->m_level->m_songID > 0) g_song = std::string(MusicDownloadManager::sharedState()->pathForSong(pl->m_level->m_songID));
@@ -165,7 +162,7 @@ void renderCapture() {
 
     auto ov = OverlayManager::get();
     bool ovVisible = ov && ov->isVisible();
-    if (ov) ov->setVisible(false);          // keep the bot's own buttons out of the video
+    if (ov) ov->setVisible(false);
     g_rt->beginWithClear(0, 0, 0, 1);
     scene->visit();
     glReadPixels(0, 0, g_w, g_h, GL_RGBA, GL_UNSIGNED_BYTE, g_buf.data());
