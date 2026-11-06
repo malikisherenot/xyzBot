@@ -15,7 +15,6 @@
 using namespace geode::prelude;
 
 namespace xyz {
-// Macros are saved under the level's name (characters Windows can't store are dropped).
 std::string macroFileName() {
     std::string out;
     if (!cfg().autoName) return "macro";
@@ -31,7 +30,6 @@ std::string macroFileName() {
 static size_t hi(int button, bool p2) { return (p2 ? 3 : 0) + std::clamp(button, 1, 3) - 1; }
 static bool takeover() { auto& c = cfg(); return c.maintainGravity || c.mirror || c.acOn[0] || c.acOn[1] || c.inverse[0] || c.inverse[1]; }
 
-// Which players a macro controls during playback / records (0 both, 1 player 1, 2 player 2).
 static bool covers(int mode, bool p2) { return mode == 0 || (mode == 1 && !p2) || (mode == 2 && p2); }
 
 static bool noclipFor(PlayerObject* p, GJBaseGameLayer* gl) {
@@ -42,7 +40,6 @@ static bool noclipFor(PlayerObject* p, GJBaseGameLayer* gl) {
     return true;
 }
 
-// Touching a green dash orb or a (usable) black orb: release first so the press that follows triggers it.
 static bool wantsPreRelease(PlayerObject* pl) {
     auto& c = cfg();
     if (!pl || !pl->m_touchingRings) return false;
@@ -58,7 +55,6 @@ static bool wantsPreRelease(PlayerObject* pl) {
     return false;
 }
 
-// The layer the bot drives: the level, or the editor while it is playtesting.
 GJBaseGameLayer* activeLayer() {
     if (auto pl = PlayLayer::get()) return pl;
     if (auto ed = LevelEditorLayer::get(); ed && ed->m_playbackMode == PlaybackMode::Playing) return ed;
@@ -133,7 +129,6 @@ static void acStep(GJBaseGameLayer* gl, int p) {
     if (tick >= nxt || a.last == UINT64_MAX) {
         a.last = tick;
         if (c.acSwift[p]) {
-            // swift mode: a click is a press and release in the same tick
             computeWant();
             press(gl, true, p); press(gl, false, p);
             return;
@@ -156,8 +151,6 @@ static void drive(GJBaseGameLayer* gl) {
         if (r.want[p] != r.gameHeld[p]) press(gl, r.want[p], p);
 }
 
-// Playing a macro recorded at an earlier start from a later StartPos: jump the macro forward to the
-// tick where its player reached this start, using the recorded frame fixes.
 static bool alignPlayback() {
     auto& r = rt(); auto& m = r.play;
     float cur = r.startX, rec = m.startX;
@@ -214,7 +207,7 @@ static void applyFix(GJBaseGameLayer* pl, Fix const& f) {
     auto p = f.p2 ? pl->m_player2 : pl->m_player1;
     if (!p || (f.p2 && !pl->m_gameState.m_isDualMode)) return;
     p->setPosition({f.x, f.y});
-    if (!std::isnan(f.rot)) p->setRotation(f.rot);   // imported fixes may not carry rotation / velocity
+    if (!std::isnan(f.rot)) p->setRotation(f.rot);
     if (!std::isnan(f.yv)) p->m_yVelocity = f.yv;
 }
 
@@ -240,8 +233,6 @@ static void feed(GJBaseGameLayer* gl) {
     }
 }
 
-// Switch from playing a macro to recording: everything the macro already did is kept, the rest is dropped,
-// and new inputs are appended from the current tick.
 static void takeOver() {
     auto& r = rt();
     if (r.mode != Mode::Play) return;
@@ -262,7 +253,6 @@ bool takeOverNow() {
     return true;
 }
 
-// state of both players after tick `tick`, stored as a frame fix
 static void pushFixes(GJBaseGameLayer* pl, uint32_t tick) {
     auto& r = rt();
     auto add = [&](PlayerObject* p, bool p2) {
@@ -275,7 +265,7 @@ static void pushFixes(GJBaseGameLayer* pl, uint32_t tick) {
 static void closeTick(GJBaseGameLayer* pl) {
     auto& r = rt();
     if (r.mode == Mode::Play) {
-        bool useFix = cfg().accuracy > 0;   // vanilla ignores the fixes stored in the macro
+        bool useFix = cfg().accuracy > 0;
         while (r.nextFix < r.play.fixes.size() && r.play.fixes[r.nextFix].tick <= r.tick) {
             if (useFix) applyFix(pl, r.play.fixes[r.nextFix]);
             r.nextFix++;
@@ -310,7 +300,6 @@ static void closeTick(GJBaseGameLayer* pl) {
     if (cfg().trail) vis::sampleTrail(pl);
 }
 
-// The editor has no reset hook we can rely on: detect a respawn from the player's state.
 static void editorRespawnCheck(GJBaseGameLayer* gl) {
     auto& r = rt();
     auto p = gl->m_player1;
@@ -331,14 +320,13 @@ class $modify(XyzGL, GJBaseGameLayer) {
         bool p2 = !p1;
         if (r.mode == Mode::Play && ext && c.takeOver && button >= 1 && button <= 3 && down) takeOver();
         if (r.mode == Mode::Play && !r.feeding && !r.resetting && c.blockInputs && covers(c.playPlayers, p2)) return;
-        if (ext && button == 1 && !down && c.autoSwift && r.mode != Mode::Play && !takeover()) return;   // auto swift: releases are generated
+        if (ext && button == 1 && !down && c.autoSwift && r.mode != Mode::Play && !takeover()) return;
         if (ext && button == 1) {
             r.userHeld[p2] = down;
             if (down) cpsPush(p2);
             if (takeover() && r.mode != Mode::Play) return;
         }
         if (r.mode == Mode::Record && !r.resetting && button >= 1 && button <= 3 && covers(c.recPlayers, p2)) {
-            // input fixes: store where the players are right before this input (one fix per tick)
             if (c.accuracy == 1 && r.tick > 0 && (r.rec.fixes.empty() || r.rec.fixes.back().tick < r.tick - 1)) pushFixes(this, r.tick - 1);
             r.held[hi(button, p2)] = down;
             r.rec.inputs.push_back({r.tick, (uint8_t)button, down, p2});
@@ -448,7 +436,7 @@ class $modify(XyzPL, PlayLayer) {
     void destroyPlayer(PlayerObject* p, GameObject* o) {
         auto& r = rt();
         if (r.simulating) {
-            if (o && o == m_anticheatSpike) return;   // the hidden spike at the start of every level
+            if (o && o == m_anticheatSpike) return;
             r.simDead = true;
             return;
         }
@@ -473,7 +461,6 @@ class $modify(XyzPL, PlayLayer) {
     }
 };
 
-// ---- editor playtest ----
 class $modify(XyzEditorLayer, LevelEditorLayer) {
     bool init(GJGameLevel* level, bool p1) {
         if (!LevelEditorLayer::init(level, p1)) return false;
@@ -508,7 +495,6 @@ void onEditorPlaytest(bool started) {
     vis::hideLabels();
 }
 
-// Plays the next macro of the sequence (in order, or random) once the current one finished.
 void seqNext() {
     auto& c = cfg(); auto& r = rt();
     if (c.seq.empty() || !PlayLayer::get()) return;

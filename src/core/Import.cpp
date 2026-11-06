@@ -1,10 +1,4 @@
-// Macro importers. Reads many formats into the native Macro:
-//  - .gdr / .gdr.json / .json  GDR1 (msgpack or json), including xdBot macros with their frame fixes
-//  - .xd                       legacy xdBot text macros (inputs + position fixes), logic from xdBot (GPL-3.0)
-//  - .slc                      Silicate v1 / v2 / v3 (layouts from siliconv and slc, GPL-3.0; only the last attempt is kept)
-//  - .tcm                      TCBot v1 / v2, old .echo (SIMPLE/DEBUG/META), Echo json and Echo plain text (Echo's converters, GPL-3.0)
-//  - .txt / .csv               "tick button down [p2]" lines, optional "tps=240" line
-// Imported frame fixes carry only what the source stored: missing rotation / y velocity are NaN and are not applied.
+// Macro importers, based on xdBot, siliconv, slc and Echo's converters (GPL-3.0).
 #include "State.hpp"
 #include "../third_party/json.hpp"
 #include <algorithm>
@@ -45,7 +39,6 @@ std::vector<std::string> splitBy(std::string const& s, char sep) {
 }
 float toF(std::string const& s, float d = 0.f) { char* e = nullptr; float v = std::strtof(s.c_str(), &e); return e == s.c_str() ? d : v; }
 
-// xdBot before 2.3.6 stored frames one lower than now
 int legacyOffset(std::string const& bot, std::string ver) {
     if (bot != "xdBot") return 0;
     if (!ver.empty() && ver.front() == 'v') ver.erase(0, 1);
@@ -61,7 +54,6 @@ bool usesRotation(std::string const& bot, std::string const& ver) {
     return ver.find("beta.") == std::string::npos && ver.find("alpha.") == std::string::npos;
 }
 
-// an xdBot fix at frame f is the state right before frame f runs: that is our fix at tick f-1
 void addFix(Macro& m, int frame, bool p2, float x, float y, float rot) {
     if (frame < 1 || (x == 0.f && y == 0.f)) return;
     m.fixes.push_back({(uint32_t)(frame - 1), p2, x, y, rot, NOVAL});
@@ -135,7 +127,7 @@ bool importGdr(Macro& m, std::vector<uint8_t> const& data) {
 
 bool importXD(Macro& m, std::string const& s) {
     m = Macro{};
-    m.tps = 240;   // frames are converted to 240 ticks per second
+    m.tps = 240;
     float mult = 1.f;
     std::istringstream in(s); std::string line;
     while (std::getline(in, line)) {
@@ -164,7 +156,6 @@ bool importXD(Macro& m, std::string const& s) {
     return true;
 }
 
-// little-endian byte reader with bounds checks
 struct Bytes {
     std::vector<uint8_t> const& d; size_t at = 0; bool fail = false;
     size_t left() const { return fail || at >= d.size() ? 0 : d.size() - at; }
@@ -186,7 +177,6 @@ struct Bytes {
     }
 };
 
-// shared state while walking a Silicate replay: only the last attempt is kept, frames are relative to it
 struct SlcWalk {
     Macro& m;
     uint64_t frame = 0, attempt = 0;
@@ -202,10 +192,10 @@ struct SlcWalk {
         if (hasSeed) seed = newSeed;
     }
     void setTps(double v) { if (std::isfinite(v) && v >= 1.0) { tps = v; if (frame <= attempt) startTps = v; } }
-    void state3(uint64_t v) {   // v3 player input
+    void state3(uint64_t v) {
         frame += v >> 4;
         int btn = (int)((v >> 2) & 3); bool p2 = (v >> 1) & 1;
-        if (btn == 0) { press(1, true, p2); press(1, false, p2); }   // swift click
+        if (btn == 0) { press(1, true, p2); press(1, false, p2); }
         else press(btn, v & 1, p2);
     }
 };
@@ -229,9 +219,9 @@ bool importSlc3(Macro& m, std::vector<uint8_t> const& d) {
         uint64_t size = in.u(8) & ((1ULL << 56) - 1);
         if (size > end - in.at) { g_err = "Corrupt Silicate v3 atom"; return false; }
         size_t atomEnd = size == 0 ? end : in.at + (size_t)size;
-        if (id == 1) {   // action atom
+        if (id == 1) {
             if (atomEnd - in.at < 8) { g_err = "Corrupt Silicate v3 actions"; return false; }
-            in.u(8);   // action count: not trusted, sections are read until the atom ends
+            in.u(8);
             while (!in.fail && atomEnd - in.at >= 2) {
                 uint16_t h = (uint16_t)in.u(2);
                 switch (h >> 14) {
@@ -251,8 +241,8 @@ bool importSlc3(Macro& m, std::vector<uint8_t> const& d) {
                     w.frame += in.u(width);
                     switch ((h >> 10) & 15) {
                     case 3: w.setTps(in.pod<double>()); break;
-                    case 0: case 1: case 2: w.restart(in.u(8), true); break;   // restart / full restart / death
-                    case 4: break;   // bugpoint
+                    case 0: case 1: case 2: w.restart(in.u(8), true); break;
+                    case 4: break;
                     default: g_err = "Unknown Silicate v3 section"; return false;
                     }
                     break;
@@ -332,7 +322,6 @@ bool importSlc(Macro& m, std::vector<uint8_t> const& d) {
     return importSlc1(m, d);
 }
 
-// TCBot (.tcm) v1 / v2, layout from Echo's converter (GPL-3.0)
 bool importTcbot(Macro& m, std::vector<uint8_t> const& d) {
     static const uint8_t header[16] = {0x9f, 0x88, 0x89, 0x84, 0x9f, 0x3b, 0x1d, 0xd8, 0xcc, 0xa1, 0x86, 0x8a, 0x88, 0x99, 0x84, 0x00};
     if (d.size() < 16 + 64 || std::memcmp(d.data(), header, 16) != 0) return false;
@@ -349,7 +338,7 @@ bool importTcbot(Macro& m, std::vector<uint8_t> const& d) {
     float startTps = tps;
     auto push = [&](uint64_t frame, int btn, bool down, bool p2) {
         if (frame > 0x7fffffffULL) return;
-        m.inputs.push_back({(uint32_t)(frame >= 2 ? frame - 2 : 0), (uint8_t)btn, down, p2});   // the format counts from 2
+        m.inputs.push_back({(uint32_t)(frame >= 2 ? frame - 2 : 0), (uint8_t)btn, down, p2});
     };
     bool ok = true;
     if (version == 1) {
@@ -367,7 +356,7 @@ bool importTcbot(Macro& m, std::vector<uint8_t> const& d) {
     } else if (version == 2) {
         uint64_t frame = 1 + in.leb(), lastDelta = 0;
         if (in.fail) ok = false;
-        uint8_t info = 0; int next = 0;   // 0 action, 1 delta, 2 tps, 3 seed
+        uint8_t info = 0; int next = 0;
         while (ok) {
             if (next == 0) {
                 if (in.left() == 0) break;
@@ -404,7 +393,6 @@ bool importTcbot(Macro& m, std::vector<uint8_t> const& d) {
     return true;
 }
 
-// Echo's older binary .echo (SIMPLE / DEBUG / META / METADBG). The newer compressed .echo is not readable here.
 bool parseLegacyEcho(Macro& m, std::vector<uint8_t> const& d, int strBytes, bool withMeta) {
     if (d.size() < (size_t)strBytes + 8) return false;
     uint64_t len, cap;
@@ -446,7 +434,6 @@ bool importLegacyEcho(Macro& m, std::vector<uint8_t> const& d) {
     return false;
 }
 
-// Echo json: current ("format": "echo") and the old one ("holding" / "player_2")
 bool importEchoJson(Macro& m, json const& j) {
     bool cur = strOr(j, "format") == "echo";
     m = Macro{};
@@ -479,7 +466,6 @@ bool importEchoJson(Macro& m, json const& j) {
     return true;
 }
 
-// Echo's plain text: first line is the fps, then "frame holding player2" lines
 bool importEchoPlain(Macro& m, std::string const& s) {
     std::istringstream in(s);
     float fps = 0.f;
@@ -493,7 +479,7 @@ bool importEchoPlain(Macro& m, std::string const& s) {
 }
 
 bool importText(Macro& m, std::string const& s) {
-    {   // a lone number on the first line means Echo's plain format
+    {
         std::istringstream first(s); std::string line;
         while (std::getline(first, line)) {
             if (line.empty() || line == "\r") continue;

@@ -1,4 +1,3 @@
-// .xyz v2: delta + varint columns, linear-predicted float residuals, then LZ77. Lossless.
 #include "State.hpp"
 #include <cstring>
 #include <fstream>
@@ -71,7 +70,7 @@ bool unlz(uint8_t const* p, uint8_t const* e, size_t raw, Buf& out) {
 int32_t bitsOf(float f) { int32_t i; std::memcpy(&i, &f, 4); return i; }
 float floatOf(int32_t i) { float f; std::memcpy(&f, &i, 4); return f; }
 
-struct Hist { int32_t a[4][2] = {}; };  // [channel][prev1, prev2]
+struct Hist { int32_t a[4][2] = {}; };
 int32_t predict(Hist const& h, int c) { return (int32_t)((uint32_t)h.a[c][0] * 2u - (uint32_t)h.a[c][1]); }
 void push(Hist& h, int c, int32_t v) { h.a[c][1] = h.a[c][0]; h.a[c][0] = v; }
 

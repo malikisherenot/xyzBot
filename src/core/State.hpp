@@ -28,7 +28,7 @@ struct Cfg {
     float speedVal = 1.f;
     bool stepper = false;
     bool noclip = false;
-    int accuracy = 2;   // 0 vanilla, 1 input fixes, 2 frame fixes
+    int accuracy = 2;
     bool fastSub = true, skipVis = false;
     bool ignoreLevel = false;
     bool hitboxes = false;
@@ -61,7 +61,7 @@ struct Cfg {
     bool takeOver = false, continueEnd = false;
     bool autoName = true, noOverwrite = false;
     int renameFmt = 0;
-    int recPlayers = 0, playPlayers = 0;   // 0 both, 1 player 1 only, 2 player 2 only
+    int recPlayers = 0, playPlayers = 0;
     bool swapInput = false, inverse[2] = {false, false};
     bool seqOn = false, seqRandom = false;
     std::vector<std::string> seq;
@@ -139,7 +139,6 @@ std::string uniqueMacroName(std::string const& base);
 bool mergeMacros(std::string const& a, std::string const& b, std::string& outName);
 void seqNext();
 bool takeOverNow();
-// video rendering (needs the eclipse.ffmpeg-api mod)
 bool renderAvailable();
 bool isRendering();
 float renderFps();

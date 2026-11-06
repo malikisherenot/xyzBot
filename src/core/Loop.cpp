@@ -113,7 +113,7 @@ class $modify(XyzSched, CCScheduler) {
     void update(float dt) {
         auto& c = xyz::cfg();
         float rf = xyz::renderFps();
-        if (rf > 0.f) dt = 1.f / rf;   // rendering: every frame is exactly one video frame
+        if (rf > 0.f) dt = 1.f / rf;
         CCScheduler::update(rf > 0.f ? dt : (c.speed ? dt * c.speedVal : dt));
         static float lastPitch = 1.f;
         float want = (c.speed && c.speedAudio) ? c.speedVal : 1.f;

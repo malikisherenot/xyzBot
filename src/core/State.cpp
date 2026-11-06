@@ -122,8 +122,6 @@ std::vector<std::string> listMacros() {
     return out;
 }
 
-
-// Numbered file name for "No Overwrite": Name_1, Name_2 ... (format chosen in the naming settings).
 std::string uniqueMacroName(std::string const& base) {
     static char const* FMT[] = {"_#", " #", " (#)", "-#"};
     std::string f = FMT[std::clamp(cfg().renameFmt, 0, 3)];
@@ -137,7 +135,6 @@ std::string uniqueMacroName(std::string const& base) {
     return base;
 }
 
-// Merge macro b into macro a (for example a Player 1 macro and a Player 2 macro) and save as "a + b".
 bool mergeMacros(std::string const& a, std::string const& b, std::string& outName) {
     Macro ma, mb;
     if (!loadMacro(ma, a) || !loadMacro(mb, b) || ma.tps != mb.tps) return false;

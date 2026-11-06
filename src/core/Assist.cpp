@@ -60,7 +60,6 @@ void assistTick(GJBaseGameLayer* gl) {
         if (r.flipSwiftNow[p]) { r.flipSwiftNow[p] = false; swiftClick(gl, p); }
         if (r.padClick[p]) { r.padClick[p] = false; swiftClick(gl, p); }
 
-        // Auto straight fly: keep the ship level by pressing/releasing against its vertical speed.
         if (c.sFly && c.sFlyOn[p] && pl->m_isShip) {
             bool holding = r.gameHeld[p];
             float thr = c.sFlyThr[p];
@@ -72,7 +71,6 @@ void assistTick(GJBaseGameLayer* gl) {
             else if (wantRelease) pressButton(gl, false, p);
         }
 
-        // Auto straight UFO: tap whenever the UFO drifts past the target height while falling.
         if (c.sUfo && c.sUfoOn[p] && pl->m_isBird) {
             float y = pl->getPositionY();
             double vy = pl->m_yVelocity;
