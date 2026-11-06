@@ -74,6 +74,18 @@ To build locally, follow the [Geode setup guide](https://docs.geode-sdk.org/gett
 geode build
 ```
 
+## Known bugs
+
+| Status | Meaning |
+| --- | --- |
+| 🟢 | Solved |
+| ⌛ | Working on it |
+| 🔴 | Not going to get fixed |
+
+| Status | Bug |
+| --- | --- |
+| ⌛ | The button can't be opened again if you open it during a transition |
+
 ## Credits
 
 xyzBot builds on the work of others. Thank you to:
@@ -82,7 +94,6 @@ xyzBot builds on the work of others. Thank you to:
 - siliconv and slc: Silicate `.slc` layouts
 - Echo: TCBot, Echo and plain format layouts
 - NyteLyte's [Wave Trail Drag Fix](https://github.com/nytelytee/geode-wave-trail-drag-fix) and syzzi: the wave drag fix
-- Thanks to xanescode for the website <3
 
 Check each project for its own license.
 
