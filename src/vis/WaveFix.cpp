@@ -1,7 +1,5 @@
-// "Wave Drag Fix": the wave trail was wrong on D blocks (drag) and at high TPS. Ported from NyteLyte's
-// geode-wave-trail-drag-fix (GPL-3.0, https://github.com/nytelytee/geode-wave-trail-drag-fix), thanks to syzzi for the
-// updateRotation idea. Only the trail drawing changes, never the physics. Everything is gated on cfg().waveDragFix
-// and skipped for fake players (rt().simulating) and the level editor.
+// Wave Drag Fix, ported from NyteLyte's geode-wave-trail-drag-fix (GPL-3.0,
+// https://github.com/nytelytee/geode-wave-trail-drag-fix) with syzzi's updateRotation idea.
 #include "../core/State.hpp"
 #include <Geode/modify/PlayerObject.hpp>
 #include <Geode/modify/PlayLayer.hpp>
@@ -18,9 +16,7 @@ bool waveOn(PlayerObject* p) { return p && p->m_gameLayer && waveOn(); }
 class $modify(XyzWavePlayer, PlayerObject) {
     struct Fields {
         bool gotHereFromUpdate = false;
-        // a point would not have been otherwise added, but force it to be added
         bool forceAdd = true;
-        // the pad has the same effect as the ring, except it has to be done 1 update later
         bool spiderPadTriggered = false;
         bool forceAddSpiderPad = false;
         bool forceAddSpiderRing = false;
@@ -31,15 +27,13 @@ class $modify(XyzWavePlayer, PlayerObject) {
         CCPoint previousPos{-12, -12};
         CCPoint currentPos{-12, -12};
         CCPoint nextPosNoCollision{-12, -12};
-        // slopes aren't stored in m_collidedObject
         GameObject* collidedSlope = nullptr;
-        // Click Between Frames changes the delta factor, so it is read in PlayerObject::update
         float deltaFactor = 0;
     };
 
     static void onModify(auto& self) {
         auto res = self.setHookPriorityAfter("PlayerObject::update", "syzzi.click_between_frames");
-        (void)res; // fails when Click Between Frames is not installed, which is fine
+        (void)res;
     }
 
     void resetObject() {
@@ -66,7 +60,6 @@ class $modify(XyzWavePlayer, PlayerObject) {
         m_fields->deltaFactor = deltaFactor;
     }
 
-    // updateRotation runs after postCollision, and still runs while noclipping (postCollision does not)
     void updateRotation(float p0) {
         PlayerObject::updateRotation(p0);
         if (!waveOn(this) || !m_fields->gotHereFromUpdate) return;
@@ -74,7 +67,6 @@ class $modify(XyzWavePlayer, PlayerObject) {
 
         if (!m_isDart || m_isHidden) {
             m_fields->previousPos = m_fields->currentPos;
-            // reset the rest so a stale state cannot connect two portals later
             m_fields->justTeleported = false;
             m_fields->teleportedPreviouslySpiderRing = false;
             m_fields->forceAddSpiderRing = false;
@@ -90,7 +82,6 @@ class $modify(XyzWavePlayer, PlayerObject) {
         CCPoint nextPosition = getRealPosition();
 
         if (m_wasTeleported && !m_fields->justTeleported) {
-            // teleportPlayer is not called for a teleport portal hit on the first update
             addWaveTrailPoint(nextPosition);
             return;
         } else if (m_fields->justTeleported) {
@@ -114,7 +105,6 @@ class $modify(XyzWavePlayer, PlayerObject) {
             m_fields->previousPos = currentPosition;
             return;
         } else if (m_fields->forceAddSpiderRing || m_fields->forceAddSpiderPad) {
-            // spider orbs and pads need special care so the line looks straight
             m_fields->forceAddSpiderRing = false;
             m_fields->forceAddSpiderPad = false;
             m_fields->forceAdd = false;
@@ -133,8 +123,6 @@ class $modify(XyzWavePlayer, PlayerObject) {
         }
 
         if (nextPosition != nextPositionNoCollision && !m_fields->transitionToCollision) {
-            // the player was supposed to land on a block between two updates: add the point where it would have
-            // landed instead of the current position (not exact on slopes, but close enough)
             float objectBoundMin = std::numeric_limits<float>::lowest();
             float objectBoundMax = std::numeric_limits<float>::max();
             float hitboxSizeProbably = getObjectRect().size.width;
@@ -155,14 +143,12 @@ class $modify(XyzWavePlayer, PlayerObject) {
             }
             float intercept = (nextPositionNoCollision.y - currentPosition.y) / (nextPositionNoCollision.x - currentPosition.x);
             float desiredValue = (nextPosition.y - currentPosition.y + intercept * currentPosition.x) / intercept;
-            // the player snapped to an object
             if (
                 (desiredValue < currentPosition.x && !m_isGoingLeft) ||
                 (desiredValue > currentPosition.x && m_isGoingLeft) ||
                 (currentPosition.x + hitboxSizeProbably / 2 < objectBoundMin && !m_isGoingLeft) ||
                 (currentPosition.x - hitboxSizeProbably / 2 > objectBoundMax && m_isGoingLeft)
             ) {
-                // draw a vertical if the player snapped
                 if (m_isSideways) addWaveTrailPoint({currentPosition.y, currentPosition.x});
                 else addWaveTrailPoint(currentPosition);
                 desiredValue = currentPosition.x;
@@ -184,7 +170,6 @@ class $modify(XyzWavePlayer, PlayerObject) {
         }
     }
 
-    // adds a point; when it is (almost) in line with the last two, the last one is dropped first
     void addWaveTrailPoint(CCPoint point) {
         if (!m_waveTrail || !m_waveTrail->m_pointArray) return;
         unsigned objectCount = static_cast<unsigned>(m_waveTrail->m_pointArray->count());
@@ -199,7 +184,6 @@ class $modify(XyzWavePlayer, PlayerObject) {
         m_waveTrail->addPoint(point);
     }
 
-    // spider orb
     bool pushButton(PlayerButton button) {
         const int TOGGLE_RING = 1594;
         const int TELEPORT_RING = 3027;
@@ -210,14 +194,13 @@ class $modify(XyzWavePlayer, PlayerObject) {
         for (unsigned i = 0; i < m_touchingRings->count(); i++) {
             auto* ring = static_cast<RingObject*>(m_touchingRings->objectAtIndex(i));
             switch (ring->m_objectID) {
-                // these two let the click reach the next ring
                 case TOGGLE_RING:
                     if (ring->m_claimTouch) return PlayerObject::pushButton(button);
                     [[fallthrough]];
                 case TELEPORT_RING:
                     continue;
                 case SPIDER_RING:
-                    willTriggerSpiderRing = true; // unless a toggle ring claims the touch
+                    willTriggerSpiderRing = true;
                     [[fallthrough]];
                 default:
                     if (!willTriggerSpiderRing) return PlayerObject::pushButton(button);
@@ -231,12 +214,10 @@ class $modify(XyzWavePlayer, PlayerObject) {
         return PlayerObject::pushButton(button);
     }
 
-    // spider pad
     void spiderTestJump(bool p0) {
         if (!m_isDart || !waveOn(this) || m_fields->justTeleported) return PlayerObject::spiderTestJump(p0);
         m_waveTrail->addPoint(m_fields->currentPos);
         m_fields->previousPos = m_fields->currentPos;
-        // runs for both orbs and pads; only a pad needs the extra step
         if (!m_fields->forceAddSpiderRing) m_fields->spiderPadTriggered = true;
         PlayerObject::spiderTestJump(p0);
     }
@@ -270,7 +251,6 @@ class $modify(XyzWavePlay, PlayLayer) {
 class $modify(XyzWaveBase, GJBaseGameLayer) {
     void teleportPlayer(TeleportPortalObject* portal, PlayerObject* player) {
         GJBaseGameLayer::teleportPlayer(portal, player);
-        // a teleport trigger passes a null player, the original falls back to player 1
         if (!player) player = m_player1;
         if (!player || !player->m_isDart || !waveOn(player)) return;
         auto* wp = static_cast<XyzWavePlayer*>(player);
@@ -280,7 +260,6 @@ class $modify(XyzWaveBase, GJBaseGameLayer) {
 
     void toggleDualMode(GameObject* portal, bool state, PlayerObject* playerTouchingPortal, bool p4) {
         if (!state && playerTouchingPortal && playerTouchingPortal == m_player2 && waveOn()) {
-            // player 2 becomes player 1 after the original runs: carry its wave state over
             XyzWavePlayer::Fields backup = *static_cast<XyzWavePlayer*>(m_player2)->m_fields.operator->();
             GJBaseGameLayer::toggleDualMode(portal, state, playerTouchingPortal, p4);
             if (m_player1) *static_cast<XyzWavePlayer*>(m_player1)->m_fields.operator->() = backup;

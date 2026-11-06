@@ -1,6 +1,4 @@
-// "Fix Rotation Bug", ported from Echo (GPL-3.0). Ship, UFO, wave and swing tilt is shown from a separate visual
-// rotation: gameplay keeps the real rotation, the picture gets one computed with a minimum movement so the tilt
-// does not collapse at high TPS. The visual rotation is put on screen once per frame and taken off before the next tick.
+// "Fix Rotation Bug", ported from Echo (GPL-3.0).
 #include "Vis.hpp"
 #include "../core/State.hpp"
 #include <Geode/modify/PlayerObject.hpp>
@@ -9,9 +7,9 @@
 using namespace geode::prelude;
 
 namespace {
-std::unordered_map<PlayerObject*, float> g_fix;     // visual rotation per player
-std::unordered_map<PlayerObject*, float> g_held;    // gameplay rotation while the visual one is shown
-std::unordered_map<PlayerObject*, float> g_left;    // gameplay rotation the visual one was last built from
+std::unordered_map<PlayerObject*, float> g_fix;
+std::unordered_map<PlayerObject*, float> g_held;
+std::unordered_map<PlayerObject*, float> g_left;
 
 bool tiltMode(PlayerObject* p) { return p->m_isShip || p->m_isBird || p->m_isDart || p->m_isSwing; }
 bool tiltApplies(PlayerObject* p) { return xyz::cfg().fixRotation && tiltMode(p) && !xyz::rt().simulating; }
