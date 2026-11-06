@@ -82,6 +82,7 @@ xyzBot builds on the work of others. Thank you to:
 - siliconv and slc: Silicate `.slc` layouts
 - Echo: TCBot, Echo and plain format layouts
 - NyteLyte's [Wave Trail Drag Fix](https://github.com/nytelytee/geode-wave-trail-drag-fix) and syzzi: the wave drag fix
+- Thanks to xanescode for the website <3
 
 Check each project for its own license.
 
