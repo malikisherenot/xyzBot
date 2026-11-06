@@ -1,11 +1,13 @@
 // Macro importers. Reads many formats into the native Macro:
 //  - .gdr / .gdr.json / .json  GDR1 (msgpack or json), including xdBot macros with their frame fixes
 //  - .xd                       legacy xdBot text macros (inputs + position fixes), logic from xdBot (GPL-3.0)
-//  - .slc                      Silicate v1 (layout from siliconv, GPL-3.0); v2/v3 need slc_oxide, not included
+//  - .slc                      Silicate v1 / v2 / v3 (layouts from siliconv and slc, GPL-3.0; only the last attempt is kept)
+//  - .tcm                      TCBot v1 / v2, old .echo (SIMPLE/DEBUG/META), Echo json and Echo plain text (Echo's converters, GPL-3.0)
 //  - .txt / .csv               "tick button down [p2]" lines, optional "tps=240" line
 // Imported frame fixes carry only what the source stored: missing rotation / y velocity are NaN and are not applied.
 #include "State.hpp"
 #include "../third_party/json.hpp"
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -72,11 +74,17 @@ void finish(Macro& m) {
     for (auto& i : m.inputs) m.ticks = std::max(m.ticks, i.tick);
 }
 
+bool importEchoJson(Macro& m, json const& j);
+
 bool importGdr(Macro& m, std::vector<uint8_t> const& data) {
     json j = json::from_msgpack(data, true, false);
     if (j.is_discarded()) j = json::parse(data, nullptr, false);
     if (j.is_discarded() || !j.is_object() || !j.contains("inputs") || !j["inputs"].is_array()) { g_err = "Not a GDR macro"; return false; }
     json const& cj = j;
+    {
+        auto first = cj["inputs"].empty() ? json() : cj["inputs"][0];
+        if (strOr(cj, "format") == "echo" || (first.is_object() && (first.contains("holding") || first.contains("player_2")))) return importEchoJson(m, cj);
+    }
     std::string bot, ver;
     if (auto it = cj.find("bot"); it != cj.end()) { bot = strOr(*it, "name"); ver = strOr(*it, "version"); }
     int offset = legacyOffset(bot, ver);
@@ -156,15 +164,153 @@ bool importXD(Macro& m, std::string const& s) {
     return true;
 }
 
-bool importSlc(Macro& m, std::vector<uint8_t> const& d) {
-    if ((d.size() >= 8 && std::memcmp(d.data(), "SLC3RPLY", 8) == 0) || (d.size() >= 4 && std::memcmp(d.data(), "SILL", 4) == 0)) {
-        g_err = "Silicate v2/v3 .slc is not supported yet (only v1)";
-        return false;
+// little-endian byte reader with bounds checks
+struct Bytes {
+    std::vector<uint8_t> const& d; size_t at = 0; bool fail = false;
+    size_t left() const { return fail || at >= d.size() ? 0 : d.size() - at; }
+    uint64_t u(size_t w) {
+        if (left() < w) { fail = true; return 0; }
+        uint64_t v = 0;
+        for (size_t i = 0; i < w; ++i) v |= (uint64_t)d[at + i] << (8 * i);
+        at += w; return v;
     }
+    template <class T> T pod() {
+        T v{};
+        if (left() < sizeof(T)) { fail = true; return v; }
+        std::memcpy(&v, &d[at], sizeof(T)); at += sizeof(T); return v;
+    }
+    uint64_t leb() {
+        uint64_t v = 0;
+        for (int sh = 0; sh < 64; sh += 7) { uint64_t b = u(1); if (fail) return 0; v |= (b & 127) << sh; if (!(b & 128)) return v; }
+        fail = true; return 0;
+    }
+};
+
+// shared state while walking a Silicate replay: only the last attempt is kept, frames are relative to it
+struct SlcWalk {
+    Macro& m;
+    uint64_t frame = 0, attempt = 0;
+    double tps = 240.0, startTps = 240.0;
+    uint64_t seed = 0;
+    void press(int btn, bool down, bool p2) {
+        uint64_t local = frame - attempt;
+        if (local > 0x7fffffffULL) return;
+        m.inputs.push_back({(uint32_t)local, (uint8_t)btn, down, p2});
+    }
+    void restart(uint64_t newSeed, bool hasSeed) {
+        m.inputs.clear(); m.fixes.clear(); startTps = tps; attempt = frame + 1;
+        if (hasSeed) seed = newSeed;
+    }
+    void setTps(double v) { if (std::isfinite(v) && v >= 1.0) { tps = v; if (frame <= attempt) startTps = v; } }
+    void state3(uint64_t v) {   // v3 player input
+        frame += v >> 4;
+        int btn = (int)((v >> 2) & 3); bool p2 = (v >> 1) & 1;
+        if (btn == 0) { press(1, true, p2); press(1, false, p2); }   // swift click
+        else press(btn, v & 1, p2);
+    }
+};
+
+bool importSlc3(Macro& m, std::vector<uint8_t> const& d) {
+    Bytes in{d};
+    in.at = 8;
+    size_t metaSize = (size_t)in.u(2);
+    if (metaSize < 16 || in.left() < metaSize + 1) { g_err = "Corrupt Silicate v3 header"; return false; }
+    size_t metaStart = in.at;
+    m = Macro{};
+    SlcWalk w{m};
+    double tps = in.pod<double>();
+    w.tps = w.startTps = (std::isfinite(tps) && tps >= 1.0) ? tps : 240.0;
+    w.seed = in.u(8);
+    in.at = metaStart + metaSize;
+    size_t end = d.back() == 0xCC ? d.size() - 1 : d.size();
+    std::vector<uint64_t> cluster;
+    while (!in.fail && end - in.at >= 12) {
+        uint32_t id = (uint32_t)in.u(4);
+        uint64_t size = in.u(8) & ((1ULL << 56) - 1);
+        if (size > end - in.at) { g_err = "Corrupt Silicate v3 atom"; return false; }
+        size_t atomEnd = size == 0 ? end : in.at + (size_t)size;
+        if (id == 1) {   // action atom
+            if (atomEnd - in.at < 8) { g_err = "Corrupt Silicate v3 actions"; return false; }
+            in.u(8);   // action count: not trusted, sections are read until the atom ends
+            while (!in.fail && atomEnd - in.at >= 2) {
+                uint16_t h = (uint16_t)in.u(2);
+                switch (h >> 14) {
+                case 0: case 1: {
+                    size_t width = (size_t)1 << ((h >> 12) & 3), len = (size_t)1 << ((h >> 8) & 15);
+                    size_t reps = (h >> 14) == 1 ? (size_t)1 << ((h >> 3) & 31) : 1;
+                    if (atomEnd - in.at < width * len) { g_err = "Corrupt Silicate v3 section"; return false; }
+                    cluster.assign(len, 0);
+                    for (auto& v : cluster) v = in.u(width);
+                    if (reps > 1 && len * reps > 50000000ULL) { g_err = "Silicate v3 repeat too large"; return false; }
+                    for (size_t r = 0; r < reps; ++r) for (auto v : cluster) w.state3(v);
+                    break;
+                }
+                case 2: {
+                    size_t width = (size_t)1 << ((h >> 8) & 3);
+                    if (atomEnd - in.at < width) { g_err = "Corrupt Silicate v3 special"; return false; }
+                    w.frame += in.u(width);
+                    switch ((h >> 10) & 15) {
+                    case 3: w.setTps(in.pod<double>()); break;
+                    case 0: case 1: case 2: w.restart(in.u(8), true); break;   // restart / full restart / death
+                    case 4: break;   // bugpoint
+                    default: g_err = "Unknown Silicate v3 section"; return false;
+                    }
+                    break;
+                }
+                default: g_err = "Unknown Silicate v3 section"; return false;
+                }
+            }
+        }
+        in.at = atomEnd;
+    }
+    if (in.fail) { g_err = "Truncated Silicate v3 macro"; return false; }
+    m.tps = (uint32_t)std::lround(w.startTps);
+    m.seed = w.seed;
+    finish(m);
+    if (m.inputs.empty()) { g_err = "Macro has no inputs"; return false; }
+    return true;
+}
+
+bool importSlc2(Macro& m, std::vector<uint8_t> const& d) {
+    Bytes in{d};
+    in.at = 4;
+    m = Macro{};
+    SlcWalk w{m};
+    double tps = in.pod<double>();
+    w.tps = w.startTps = (std::isfinite(tps) && tps >= 1.0) ? tps : 240.0;
+    uint64_t metaSize = in.u(8);
+    if (metaSize > in.left()) { g_err = "Corrupt Silicate v2 header"; return false; }
+    if (metaSize >= 8) { size_t keep = in.at; w.seed = in.u(8); in.at = keep; }
+    in.at += (size_t)metaSize;
+    uint64_t length = in.u(8), blobCount = in.u(8);
+    if (in.fail || blobCount > in.left() / 24 || length > 200000000ULL) { g_err = "Corrupt Silicate v2 header"; return false; }
+    struct Blob { uint64_t size, start, len; };
+    std::vector<Blob> blobs(blobCount);
+    for (auto& b : blobs) { b.size = in.u(8); b.start = in.u(8); b.len = in.u(8); }
+    for (auto& b : blobs) {
+        if (b.size < 1 || b.size > 8) { g_err = "Corrupt Silicate v2 blob"; return false; }
+        for (uint64_t i = 0; i < b.len && !in.fail; ++i) {
+            uint64_t st = in.u((size_t)b.size);
+            w.frame += st >> 5;
+            int type = (int)((st & 0b11100) >> 2); bool p2 = (st >> 1) & 1, hold = st & 1;
+            if (type == 7) w.setTps(in.pod<double>());
+            else if (type >= 1 && type <= 3) w.press(type, hold, p2);
+            else if (type == 4 || type == 5) w.restart(0, false);
+        }
+    }
+    if (in.fail) { g_err = "Truncated Silicate v2 macro"; return false; }
+    m.tps = (uint32_t)std::lround(w.startTps);
+    m.seed = w.seed;
+    finish(m);
+    if (m.inputs.empty()) { g_err = "Macro has no inputs"; return false; }
+    return true;
+}
+
+bool importSlc1(Macro& m, std::vector<uint8_t> const& d) {
     if (d.size() < 12) { g_err = "Not a Silicate macro"; return false; }
     double tps; uint32_t len;
     std::memcpy(&tps, d.data(), 8); std::memcpy(&len, d.data() + 8, 4);
-    if (!(tps >= 1.0 && tps < 1e7) || len > (d.size() - 12) / 4) { g_err = "Not a Silicate v1 macro"; return false; }
+    if (!(tps >= 1.0 && tps < 1e7) || len > (d.size() - 12) / 4) { g_err = "Not a Silicate macro"; return false; }
     m = Macro{};
     m.tps = (uint32_t)std::lround(tps);
     for (uint32_t k = 0; k < len; ++k) {
@@ -180,7 +326,183 @@ bool importSlc(Macro& m, std::vector<uint8_t> const& d) {
     return true;
 }
 
+bool importSlc(Macro& m, std::vector<uint8_t> const& d) {
+    if (d.size() >= 9 && std::memcmp(d.data(), "SLC3RPLY", 8) == 0) return importSlc3(m, d);
+    if (d.size() >= 4 && std::memcmp(d.data(), "SILL", 4) == 0) return importSlc2(m, d);
+    return importSlc1(m, d);
+}
+
+// TCBot (.tcm) v1 / v2, layout from Echo's converter (GPL-3.0)
+bool importTcbot(Macro& m, std::vector<uint8_t> const& d) {
+    static const uint8_t header[16] = {0x9f, 0x88, 0x89, 0x84, 0x9f, 0x3b, 0x1d, 0xd8, 0xcc, 0xa1, 0x86, 0x8a, 0x88, 0x99, 0x84, 0x00};
+    if (d.size() < 16 + 64 || std::memcmp(d.data(), header, 16) != 0) return false;
+    uint8_t version = d[16], flags = d[18];
+    float rate; std::memcpy(&rate, d.data() + 20, 4);
+    float tps = rate;
+    if (version == 2 && !(flags & 2) && rate > 0.f) {
+        tps = 1.f / rate;
+        float whole = std::round(tps);
+        if (whole > 0.f && (float)(1.0 / whole) == rate) tps = whole;
+    }
+    Bytes in{d}; in.at = 16 + 64;
+    m = Macro{};
+    float startTps = tps;
+    auto push = [&](uint64_t frame, int btn, bool down, bool p2) {
+        if (frame > 0x7fffffffULL) return;
+        m.inputs.push_back({(uint32_t)(frame >= 2 ? frame - 2 : 0), (uint8_t)btn, down, p2});   // the format counts from 2
+    };
+    bool ok = true;
+    if (version == 1) {
+        uint64_t amt = in.leb();
+        for (uint64_t i = 0; i < amt && !in.fail; ++i) {
+            uint64_t frame = 1 + in.leb();
+            uint8_t data = (uint8_t)in.u(1);
+            if (in.fail) { ok = false; break; }
+            int input = data & 7;
+            if (input < 3) push(frame, input + 1, data & 0x80, data & 0x40);
+            else if (input <= 5) m.inputs.clear();
+            else { ok = false; break; }
+        }
+        ok = ok && !in.fail;
+    } else if (version == 2) {
+        uint64_t frame = 1 + in.leb(), lastDelta = 0;
+        if (in.fail) ok = false;
+        uint8_t info = 0; int next = 0;   // 0 action, 1 delta, 2 tps, 3 seed
+        while (ok) {
+            if (next == 0) {
+                if (in.left() == 0) break;
+                uint8_t byte = (uint8_t)in.u(1);
+                info = byte >> 5; int btn = byte & 3; bool extra = byte & 0x10;
+                if (btn > 0) {
+                    bool hold = byte & 4, p2 = byte & 8;
+                    push(frame, btn, hold, p2);
+                    if (extra) push(frame, btn, !hold, p2);
+                    next = 1;
+                } else {
+                    int custom = (byte >> 2) & 3;
+                    if (custom == 3) next = extra ? 1 : 2;
+                    else { m.inputs.clear(); frame = 0; next = extra ? 3 : 1; }
+                }
+            } else if (next == 1) {
+                bool magic = info & 1; int blob = info >> 1;
+                uint64_t base = magic ? lastDelta : 0, res = base;
+                if (blob != 0) { res = base + in.u(blob == 3 ? 4 : (size_t)blob); if (res != 0) lastDelta = res; }
+                if (in.fail) break;
+                frame += res; next = 0;
+            } else if (next == 2) {
+                float v = in.pod<float>();
+                if (in.fail) break;
+                if (std::isfinite(v) && v >= 1.f && frame <= 2) startTps = v;
+                next = 1;
+            } else { in.u(8); if (in.fail) break; next = 1; }
+        }
+    } else ok = false;
+    if (!ok) { g_err = "Unsupported or corrupt TCBot macro"; return false; }
+    m.tps = (uint32_t)std::max(1L, std::lround(startTps));
+    finish(m);
+    if (m.inputs.empty()) { g_err = "Macro has no inputs"; return false; }
+    return true;
+}
+
+// Echo's older binary .echo (SIMPLE / DEBUG / META / METADBG). The newer compressed .echo is not readable here.
+bool parseLegacyEcho(Macro& m, std::vector<uint8_t> const& d, int strBytes, bool withMeta) {
+    if (d.size() < (size_t)strBytes + 8) return false;
+    uint64_t len, cap;
+    if (strBytes == 32) { std::memcpy(&len, d.data() + 16, 8); std::memcpy(&cap, d.data() + 24, 8); }
+    else { uint32_t a, b; std::memcpy(&a, d.data() + 16, 4); std::memcpy(&b, d.data() + 20, 4); len = a; cap = b; }
+    if (len < 4 || len > 7 || cap < len || cap > 15) return false;
+    std::string name((char const*)d.data(), (size_t)len);
+    if (name != "SIMPLE" && name != "DEBUG" && name != "META" && name != "METADBG") return false;
+    Bytes in{d}; in.at = (size_t)strBytes;
+    float fps = in.pod<float>(); float endX = in.pod<float>(); (void)endX;
+    if (withMeta) { in.pod<double>(); in.pod<int32_t>(); int32_t att = in.pod<int32_t>(); if (att < 0 || att > 100000000) return false; }
+    if (in.fail || !std::isfinite(fps) || fps < 1.f || fps > 100000.f) return false;
+    bool debug = name == "DEBUG" || name == "METADBG";
+    Macro out;
+    out.tps = (uint32_t)std::lround(fps);
+    int32_t prev = -1;
+    while (in.at < d.size()) {
+        if (in.left() < 6) return false;
+        int32_t number = in.pod<int32_t>(); uint8_t hold = in.pod<uint8_t>(), p2 = in.pod<uint8_t>();
+        if (hold > 1 || p2 > 1 || number < 0 || number > 100000000 || prev > number) return false;
+        prev = number;
+        out.inputs.push_back({(uint32_t)number, 1, hold != 0, p2 != 0});
+        if (debug) {
+            float x = in.pod<float>(); double yv = in.pod<double>(); double xv = in.pod<double>(); float y = in.pod<float>(); float rot = in.pod<float>();
+            (void)xv;
+            if (in.fail || !std::isfinite(x) || !std::isfinite(y) || !std::isfinite(rot) || !std::isfinite(yv)) return false;
+            if (number >= 1 && (x != 0.f || y != 0.f)) out.fixes.push_back({(uint32_t)(number - 1), p2 != 0, x, y, rot, (float)yv});
+        }
+    }
+    if (in.fail) return false;
+    m = std::move(out);
+    return true;
+}
+bool importLegacyEcho(Macro& m, std::vector<uint8_t> const& d) {
+    for (int w : {32, 24}) for (bool meta : {true, false}) {
+        if (parseLegacyEcho(m, d, w, meta)) { finish(m); if (!m.inputs.empty()) return true; }
+    }
+    g_err = "Unsupported .echo: only the old SIMPLE/DEBUG/META .echo is readable, export new ones from Echo as .echo.json, .gdr or .slc";
+    return false;
+}
+
+// Echo json: current ("format": "echo") and the old one ("holding" / "player_2")
+bool importEchoJson(Macro& m, json const& j) {
+    bool cur = strOr(j, "format") == "echo";
+    m = Macro{};
+    m.tps = (uint32_t)std::max(1L, std::lround(numOr(j, "fps", 240.0)));
+    bool debug = boolOr(j, "debug", false);
+    for (auto& i : j["inputs"]) {
+        if (!i.is_object()) continue;
+        int btn = 1;
+        if (auto it = i.find("button"); it != i.end()) {
+            if (it->is_string()) { auto t = it->get<std::string>(); btn = t == "left" ? 2 : t == "right" ? 3 : 1; }
+            else if (it->is_number()) btn = std::clamp((int)it->get<double>(), 1, 3);
+        }
+        int64_t frame = std::max<int64_t>(0, (int64_t)numOr(i, "frame", 0));
+        bool p2, down;
+        if (cur) { p2 = numOr(i, "player", 1) == 2; down = boolOr(i, "down", false); }
+        else { p2 = boolOr(i, "player_2", false); down = boolOr(i, "holding", false); }
+        m.inputs.push_back({(uint32_t)frame, (uint8_t)btn, down, p2});
+        char const* kx = cur ? "x" : "x_position"; char const* ky = cur ? "y" : "y_position"; char const* kv = cur ? "yVelocity" : "y_vel";
+        if ((debug || i.contains(kx)) && frame >= 1) {
+            float x = (float)numOr(i, kx, 0), y = (float)numOr(i, ky, 0);
+            if (x != 0.f || y != 0.f) m.fixes.push_back({(uint32_t)(frame - 1), p2, x, y, (float)numOr(i, "rotation", 0), (float)numOr(i, kv, 0)});
+        }
+    }
+    if (auto it = j.find("seed"); it != j.end()) {
+        if (it->is_string()) m.seed = std::strtoull(it->get<std::string>().c_str(), nullptr, 10);
+        else if (it->is_number_unsigned()) m.seed = it->get<uint64_t>();
+    }
+    finish(m);
+    if (m.inputs.empty()) { g_err = "Macro has no inputs"; return false; }
+    return true;
+}
+
+// Echo's plain text: first line is the fps, then "frame holding player2" lines
+bool importEchoPlain(Macro& m, std::string const& s) {
+    std::istringstream in(s);
+    float fps = 0.f;
+    if (!(in >> fps) || fps < 1.f) return false;
+    m = Macro{};
+    m.tps = (uint32_t)std::lround(fps);
+    long f; int h, p;
+    while (in >> f >> h >> p) if (f >= 0) m.inputs.push_back({(uint32_t)f, 1, h != 0, p != 0});
+    finish(m);
+    return !m.inputs.empty();
+}
+
 bool importText(Macro& m, std::string const& s) {
+    {   // a lone number on the first line means Echo's plain format
+        std::istringstream first(s); std::string line;
+        while (std::getline(first, line)) {
+            if (line.empty() || line == "\r") continue;
+            char* e = nullptr; std::strtod(line.c_str(), &e);
+            bool lone = e != line.c_str() && std::string(e).find_first_not_of(" \t\r") == std::string::npos;
+            if (lone && importEchoPlain(m, s)) return true;
+            break;
+        }
+    }
     m = Macro{};
     std::istringstream in(s); std::string line;
     while (std::getline(in, line)) {
@@ -206,7 +528,7 @@ std::string const& importError() { return g_err; }
 bool canImport(std::filesystem::path const& file) {
     auto n = file.filename().string();
     std::transform(n.begin(), n.end(), n.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-    for (char const* e : {".gdr", ".gdr.json", ".gdr2", ".json", ".xd", ".slc", ".txt", ".csv"}) if (endsWith(n, e)) return true;
+    for (char const* e : {".gdr", ".gdr.json", ".gdr2", ".json", ".xd", ".slc", ".tcm", ".echo", ".txt", ".csv"}) if (endsWith(n, e)) return true;
     return false;
 }
 
@@ -220,6 +542,8 @@ bool importMacro(Macro& m, std::filesystem::path const& file) {
     try {
         if (endsWith(n, ".xd")) return importXD(m, std::string(data.begin(), data.end()));
         if (endsWith(n, ".slc")) return importSlc(m, data);
+        if (endsWith(n, ".tcm")) return importTcbot(m, data) || (g_err = g_err.empty() ? "Not a TCBot macro" : g_err, false);
+        if (endsWith(n, ".echo") && !endsWith(n, ".echo.json")) return importLegacyEcho(m, data);
         if (endsWith(n, ".gdr2")) { g_err = ".gdr2 is binary and needs the GDR library: in xdBot save as .gdr or .gdr.json instead"; return false; }
         if (endsWith(n, ".gdr") || endsWith(n, ".json")) return importGdr(m, data);
         if (endsWith(n, ".txt") || endsWith(n, ".csv")) return importText(m, std::string(data.begin(), data.end()));
