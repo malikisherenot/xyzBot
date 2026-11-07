@@ -1,5 +1,7 @@
 // Video rendering; frames are handed to eclipse.ffmpeg-api the way Echo (GPL-3.0) does it.
 #include "../core/State.hpp"
+#include "../vis/Vis.hpp"
+#include <chrono>
 #include <Geode/modify/CCDirector.hpp>
 #include <Geode/ui/OverlayManager.hpp>
 #include <Geode/binding/FMODAudioEngine.hpp>
@@ -24,6 +26,7 @@ namespace {
 bool g_on = false;
 int g_tail = -1;
 long long g_frames = 0;
+std::chrono::steady_clock::time_point g_t0;
 bool g_vsyncWas = true;
 int g_w = 0, g_h = 0, g_fps = 60;
 fs::path g_out, g_song;
@@ -223,6 +226,14 @@ bool renderAvailable() {
 
 bool isRendering() { return g_on; }
 float renderFps() { return g_on ? (float)g_fps : 0.f; }
+RenderStats renderStats() {
+    RenderStats s;
+    if (!g_on) return s;
+    s.on = true; s.frames = g_frames; s.fps = g_fps;
+    s.realSec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_t0).count();
+    s.videoSec = (double)g_frames / std::max(1, g_fps);
+    return s;
+}
 
 std::string startRender() {
 #ifndef XYZ_FFMPEG
@@ -287,6 +298,7 @@ std::string startRender() {
     }
 
     g_frames = 0; g_tail = -1;
+    g_t0 = std::chrono::steady_clock::now();
     g_on = true;
     g_vsyncWas = GameManager::get()->getGameVariable("0030");
     setVsync(false);
@@ -356,6 +368,7 @@ void renderCapture() {
     auto ov = OverlayManager::get();
     bool ovVisible = ov && ov->isVisible();
     if (ov) ov->setVisible(false);
+    labels::captureHide(true);
     g_rt->beginWithClear(0, 0, 0, 1);
     scene->visit();
 #ifdef GEODE_IS_WINDOWS
@@ -364,6 +377,7 @@ void renderCapture() {
     readDirect();
 #endif
     g_rt->end();
+    labels::captureHide(false);
     if (ov) ov->setVisible(ovVisible);
     ++g_frames;
     if (g_tail >= 0 && --g_tail < 0) renderStop(true);
