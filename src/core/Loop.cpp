@@ -78,7 +78,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
         int64_t done = 0;
         bool blocked = false;
         auto t0 = std::chrono::steady_clock::now();
-        double budget = std::max(1.0, (double)c.budgetMs);
+        double budget = xyz::isRendering() ? 1e12 : std::max(1.0, (double)c.budgetMs);
         bool pd = pdActive(pl);
         if (!pd) r.frozen = false;
         while (done < n) {
