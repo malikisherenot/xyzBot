@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.14.2
+- Render: hardware encoders (NVENC, AMF, QuickSync) are tried first when available, falling back to software
+- Render: vsync is switched off while rendering on Windows, so the render is not capped by the monitor refresh rate
+- Render: the frame budget no longer drops ticks while rendering
+
 ## v1.14.1
 - Import: Silicate v2 and v3 .slc (restarts keep only the last attempt), TCBot .tcm, old Echo .echo, Echo json and Echo plain text
 
