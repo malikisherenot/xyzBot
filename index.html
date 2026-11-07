@@ -30,7 +30,11 @@
     overflow: hidden;
   }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .version { margin: 1.5rem 0 0; color: #9a9a9a; }
+  .repo { margin: 1.2rem 0 0; }
+  .repo a { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+  .repo a:hover { opacity: 0.85; }
+  .repo a:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+  .version { margin: 0.8rem 0 0; color: #9a9a9a; }
   .version b { color: #fff; font-weight: 600; }
   .about { margin: 1.5rem 0 2rem; padding-left: 1.2rem; }
   .about li { margin: 0.35rem 0; }
@@ -62,6 +66,7 @@
 |   |     | ||||| ||||   |||    ||
           |
       ||||</pre></h1>
+  <p class="repo"><a href="https://github.com/malikisherenot/xyzBot">GitHub repository</a></p>
   <p class="version">Latest version <b id="mod-version">v1.14.1</b></p>
   <ul class="about" id="about"></ul>
   <div class="buttons">
