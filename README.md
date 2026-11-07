@@ -78,14 +78,18 @@ geode build
 
 | Status | Meaning |
 | --- | --- |
-| 🟢 | Solved |
+| 🟢 | Solved, next upd |
 | ⌛ | Working on it |
+| 🟡 | Unknown, mediocre info
 | 🔴 | Not going to get fixed |
 
 | Status | Bug |
 | --- | --- |
 | ⌛ | The button can't be opened again if you open it during a transition |
 | ⌛ | Game crashes whenever you do an assist feature in the editor (play test) |
+| ⌛ | Height not following width when rendering. |
+| 🟡 | Render (video result) at the end, the video splits 4 times and moves to the bottom left. |
+
 
 ## Credits
 
