@@ -85,6 +85,7 @@ geode build
 | Status | Bug |
 | --- | --- |
 | ⌛ | The button can't be opened again if you open it during a transition |
+| ⌛ | Game crashes whenever you do an assist feature in the editor (play test) |
 
 ## Credits
 
