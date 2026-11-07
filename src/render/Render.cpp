@@ -3,6 +3,7 @@
 #include <Geode/modify/CCDirector.hpp>
 #include <Geode/ui/OverlayManager.hpp>
 #include <Geode/binding/FMODAudioEngine.hpp>
+#include <Geode/binding/GameManager.hpp>
 #include <Geode/binding/MusicDownloadManager.hpp>
 #include <Geode/binding/LevelTools.hpp>
 #include <filesystem>
@@ -19,6 +20,7 @@ namespace {
 bool g_on = false;
 int g_tail = -1;
 long long g_frames = 0;
+bool g_vsyncWas = true;
 int g_w = 0, g_h = 0, g_fps = 60;
 fs::path g_out, g_song;
 Ref<CCRenderTexture> g_rt;
@@ -31,6 +33,14 @@ fs::path renderDir() {
     auto p = Mod::get()->getSaveDir() / "renders";
     std::error_code ec; fs::create_directories(p, ec);
     return p;
+}
+
+void setVsync(bool on) {
+#ifdef GEODE_IS_WINDOWS
+    CCApplication::sharedApplication()->toggleVerticalSync(on);
+#else
+    (void)on;
+#endif
 }
 
 void setMusicVolume(float v) {
@@ -73,11 +83,12 @@ std::string startRender() {
     auto available = ffmpeg::events::Recorder::getAvailableCodecs();
     auto offered = [&](std::string const& n) { return available.empty() || std::find(available.begin(), available.end(), n) != available.end(); };
     std::vector<std::string> order;
-    if (c.renderCodec > 0 && c.renderCodec < 5) order.push_back(CODECS[c.renderCodec]);
+    auto want = [&](std::string n) { if (std::find(order.begin(), order.end(), n) == order.end()) order.push_back(std::move(n)); };
+    if (c.renderCodec > 0 && c.renderCodec < 5) want(CODECS[c.renderCodec]);
 #ifdef GEODE_IS_ANDROID
-    order.push_back("h264_mediacodec");
+    want("h264_mediacodec");
 #endif
-    for (auto n : {"libx264", "h264_videotoolbox", "h264_mediacodec", "libopenh264", "mpeg4"}) order.push_back(n);
+    for (auto n : {"h264_nvenc", "h264_amf", "h264_qsv", "h264_videotoolbox", "libx264", "h264_mediacodec", "libopenh264", "mpeg4"}) want(n);
 
     std::string error = "No usable video codec";
     g_enc.reset();
@@ -110,6 +121,8 @@ std::string startRender() {
 
     g_frames = 0; g_tail = -1;
     g_on = true;
+    g_vsyncWas = GameManager::get()->getGameVariable("0030");
+    setVsync(false);
     if (!c.renderMacro.empty()) {
         if (!startPlay(c.renderMacro)) { renderStop(false); return "Cannot play that macro"; }
     } else {
@@ -127,6 +140,7 @@ void renderStop(bool mixAudio) {
 #ifdef XYZ_FFMPEG
     if (!g_on) return;
     g_on = false;
+    setVsync(g_vsyncWas);
     setMusicVolume(1.f);
     if (g_enc) { g_enc->stop(); g_enc.reset(); }
     g_rt = nullptr;
