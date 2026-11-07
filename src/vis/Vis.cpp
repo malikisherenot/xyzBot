@@ -153,6 +153,33 @@ bool run(GJBaseGameLayer* pl, PlayerObject* fake, PlayerObject* real, bool hold,
     return false;
 }
 
+int survival(GJBaseGameLayer* pl, PlayerObject* fake, PlayerObject* real, int plan, bool curHeld, int len) {
+    auto& r = rt();
+    float delta = std::min(0.25f, 60.f / curTps());
+    copyState(fake, real);
+    r.simDead = false;
+    for (int i = 0; i < len; ++i) {
+        fake->m_collisionLogTop->removeAllObjects();
+        fake->m_collisionLogBottom->removeAllObjects();
+        fake->m_collisionLogLeft->removeAllObjects();
+        fake->m_collisionLogRight->removeAllObjects();
+        pl->checkCollisions(fake, delta, false);
+        if (r.simDead) return i;
+        if (i == 0) {
+            if (plan == 2) {
+                if (curHeld) fake->releaseButton(PlayerButton::Jump);
+                fake->pushButton(PlayerButton::Jump);
+                fake->releaseButton(PlayerButton::Jump);
+            } else if (plan == 1 && !curHeld) fake->pushButton(PlayerButton::Jump);
+            else if (plan == 0 && curHeld) fake->releaseButton(PlayerButton::Jump);
+        }
+        fake->update(delta);
+        fake->updateRotation(delta);
+        fake->updatePlayerScale();
+    }
+    return len;
+}
+
 void drawTraj(GJBaseGameLayer* pl) {
     auto& r = rt();
     g_tr->clear();
@@ -206,6 +233,36 @@ bool predictDeath(GJBaseGameLayer* pl, int look) {
         dead = run(pl, g_fake[1], pl->m_player2, r.want[1], look, false, r.gameHeld[1]);
     r.simulating = false;
     return dead;
+}
+
+void trajAdjust(GJBaseGameLayer* pl) {
+    auto& r = rt(); auto& c = cfg();
+    r.swiftNow = {false, false};
+    if (!c.trajAuto || !g_fake[0] || !pl->m_player1 || pl->m_player1->m_isDead) return;
+    int look = std::clamp(c.trajLook, 1, 20);
+    bool dual = pl->m_gameState.m_isDualMode && pl->m_player2 && g_fake[1];
+    bool two = pl->m_levelSettings && pl->m_levelSettings->m_twoPlayerMode;
+    r.simulating = true;
+    auto eval = [&](int plan1, int plan2) {
+        int s = look;
+        if (plan1 >= 0) s = std::min(s, survival(pl, g_fake[0], pl->m_player1, plan1, r.gameHeld[0], look));
+        if (plan2 >= 0) s = std::min(s, survival(pl, g_fake[1], pl->m_player2, plan2, r.gameHeld[1], look));
+        return s;
+    };
+    auto decide = [&](bool use1, bool use2) {
+        int a1 = use1 ? (r.want[0] ? 1 : 0) : -1, a2 = use2 ? (r.want[1] ? 1 : 0) : -1;
+        int keep = eval(a1, a2);
+        if (keep >= look) return;
+        int flip = eval(a1 >= 0 ? 1 - a1 : -1, a2 >= 0 ? 1 - a2 : -1);
+        int swift = eval(a1 >= 0 ? 2 : -1, a2 >= 0 ? 2 : -1);
+        if (std::max(flip, swift) <= keep) return;
+        if (swift > flip) { r.swiftNow[0] = r.swiftNow[0] || use1; r.swiftNow[1] = r.swiftNow[1] || use2; }
+        else { if (use1) r.want[0] = !r.want[0]; if (use2) r.want[1] = !r.want[1]; }
+    };
+    if (!dual) decide(true, false);
+    else if (!two) decide(true, true);
+    else { decide(true, false); decide(false, true); }
+    r.simulating = false;
 }
 
 void refresh(GJBaseGameLayer* pl) {

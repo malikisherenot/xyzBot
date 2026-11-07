@@ -6,6 +6,7 @@ void detach();
 void sampleTrail(GJBaseGameLayer* pl);
 void refresh(GJBaseGameLayer* pl);
 bool predictDeath(GJBaseGameLayer* pl, int look);
+void trajAdjust(GJBaseGameLayer* pl);
 void updateLabels(GJBaseGameLayer* pl);
 void hideLabels();
 void rotClear();
