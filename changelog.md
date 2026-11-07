@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.15.1
+- Render: frames are encoded on a separate thread with a small queue, so the game no longer waits for the encoder
+- Render: on Windows the GPU readback uses a ring of pixel buffers, so the game no longer stalls waiting for the screenshot
+
+## v1.15.0
+- New Trajectory Autoclicker (Bot > Survival): simulates ahead every tick and clicks, releases or taps to survive; clicks are recorded when recording
+
 ## v1.14.2
 - Render: hardware encoders (NVENC, AMF, QuickSync) are tried first when available, falling back to software
 - Render: vsync is switched off while rendering on Windows, so the render is not capped by the monitor refresh rate
