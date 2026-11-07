@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.16.0
+- Profiler (TPS settings) with three labels: frame time split between ticks and drawing, cost per tick by part, and an estimate of how much batching ticks could gain
+- Render Speed and Render Time labels; the render and profiler labels are not drawn into the video
+
+## v1.15.2
+- Trajectory Autoclicker now follows Echo's rules: it keeps the current input state until that would die, only changes it when an alternative survives longer (checked over twice the lookahead), taps instead when that is better, and defaults to a lookahead of 1
+
 ## v1.15.1
 - Render: frames are encoded on a separate thread with a small queue, so the game no longer waits for the encoder
 - Render: on Windows the GPU readback uses a ring of pixel buffers, so the game no longer stalls waiting for the screenshot

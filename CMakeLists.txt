@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(xyzBot VERSION 1.15.1)
+project(xyzBot VERSION 1.16.0)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
