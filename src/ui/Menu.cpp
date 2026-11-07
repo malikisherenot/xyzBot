@@ -165,8 +165,9 @@ static std::string helpText(std::string const& k) {
         {"Continue After Finish", "When a macro reaches its end, it keeps recording instead of stopping, so you can add more to it."},
         {"Fix Rotation Bug", "Fixes the ship, UFO, wave and swing tilt looking wrong at high TPS. Only changes how it looks, not the physics."},
         {"Wave Drag Fix", "Fixes the wave trail on D blocks (drag), slopes, portals and spider orbs, also at high TPS. Only changes the trail, not the physics."},
-        {"Trajectory Autoclicker", "Every tick it simulates what happens next. If your current input would die within the lookahead, it holds, releases or taps instead, whichever survives longest. Works while recording, so the clicks are saved in the macro."},
-        {"Click Lookahead", "How many ticks ahead the Trajectory Autoclicker looks. Higher sees danger earlier but costs more per tick."},
+        {"Trajectory Autoclicker", "Every tick it simulates what happens if the current input state continues. If that dies within the lookahead, it holds, releases or taps instead, whichever survives longest. Works while recording, so the clicks are saved in the macro. Orbs, pads and portals are not simulated yet."},
+        {"Click Lookahead", "How many ticks ahead the Trajectory Autoclicker looks. 1 only reacts to death on the next tick (Echo default). Higher reacts earlier but costs more per tick."},
+        {"Profiler", "Times what a tick costs and where it goes, and estimates how much faster running many ticks in one update call could be. Show the results with the Profiler labels (Labels page). Costs a little speed itself, turn it off when you are done."},
         {"Accuracy", "Vanilla: no position corrections. Input Fixes: the player position is stored and restored at every click. Frame Fixes: stored and restored every tick. A macro plays with whatever fixes it contains, so macros from xdBot load in any mode."},
         {"Fast Sub-Ticks", "At high TPS, skips the progress bar update on the ticks of a frame that are never drawn. Does not change the physics."},
         {"Skip Visibility On Sub-Ticks", "Experimental. Also skips the object visibility refresh on ticks that are never drawn. Faster on big levels, turn off if anything looks wrong."},
@@ -265,7 +266,7 @@ static std::function<void(double)> numSetter(std::string const& k) {
     if (k == "Trail Length") return I(&c.trailLen, 10, 2000);
     if (k == "Length") return I(&c.trajLen, 10, 2000);
     if (k == "Lookahead Ticks") return I(&c.pdLook, 1, 10);
-    if (k == "Click Lookahead") return I(&c.trajLook, 1, 20);
+    if (k == "Click Lookahead") return I(&c.trajLook, 1, 240);
     if (k == "Interval (s)") return I(&c.autosaveSec, 10, 3600);
     if (k == "Width") return I(&c.renderW, 320, 3840);
     if (k == "FPS") return I(&c.renderFps, 10, 240);
@@ -558,6 +559,8 @@ void XyzMenu::rebuild(bool animate) {
             sec("OPTIMIZATION");
             tog("Fast Sub-Ticks", c.fastSub, [](bool v) { cfg().fastSub = v; saveCfg(); });
             tog("Skip Visibility On Sub-Ticks", c.skipVis, [](bool v) { cfg().skipVis = v; saveCfg(); });
+            sec("PROFILER");
+            tog("Profiler", c.profiler, [](bool v) { cfg().profiler = v; rt().prof = Prof{}; saveCfg(); });
         } else if (sub == "speed") {
             sec("SPEEDHACK SETTINGS");
             num("Speed", [] { return fmt::format("{:.2f}", cfg().speedVal); }, [](int d) { cfg().speedVal = std::clamp(cfg().speedVal + d * 0.1f, 0.05f, 100.f); saveCfg(); });
@@ -830,7 +833,7 @@ void XyzMenu::rebuild(bool animate) {
         sec("SURVIVAL");
         tog("Prevent Death", c.preventDeath, [](bool v) { cfg().preventDeath = v; saveCfg(); }, "pd");
         tog("Trajectory Autoclicker", c.trajAuto, [](bool v) { cfg().trajAuto = v; saveCfg(); });
-        num("Click Lookahead", [] { return fmt::format("{}", cfg().trajLook); }, [](int d) { cfg().trajLook = std::clamp(cfg().trajLook + d, 1, 20); saveCfg(); });
+        num("Click Lookahead", [] { return fmt::format("{}", cfg().trajLook); }, [](int d) { cfg().trajLook = std::clamp(cfg().trajLook + d, 1, 240); saveCfg(); });
         sec("INPUT");
         tog("Maintain Gravity", c.maintainGravity, [](bool v) { cfg().maintainGravity = v; saveCfg(); });
         tog("Mirror Inputs", c.mirror, [](bool v) { cfg().mirror = v; saveCfg(); });
