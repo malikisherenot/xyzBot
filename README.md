@@ -89,6 +89,7 @@ geode build
 | ⌛ | Game crashes whenever you do an assist feature in the editor (play test) |
 | ⌛ | Height not following width when rendering. |
 | 🟡 | Render (video result) at the end, the video splits 4 times and moves to the bottom left. |
+| 🟡 | Accuracy getting worse each playback attempt in the editor (slightly) |
 
 
 ## Credits
