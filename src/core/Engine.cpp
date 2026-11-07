@@ -269,6 +269,7 @@ static void pushFixes(GJBaseGameLayer* pl, uint32_t tick) {
 
 static void closeTick(GJBaseGameLayer* pl) {
     auto& r = rt();
+    if (cfg().profiler) r.prof.ticks++;
     if (r.mode == Mode::Play) {
         bool useFix = cfg().accuracy > 0;
         while (r.nextFix < r.play.fixes.size() && r.play.fixes[r.nextFix].tick <= r.tick) {
@@ -355,7 +356,7 @@ class $modify(XyzGL, GJBaseGameLayer) {
             if (rt().mode != Mode::Play) assistTick(this);
             drive(this); feed(this);
         }
-        GJBaseGameLayer::processCommands(dt, half, last);
+        XYZ_TIMED(P_PROC, GJBaseGameLayer::processCommands(dt, half, last));
         if (!half) closeTick(this);
     }
 };

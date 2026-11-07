@@ -15,6 +15,7 @@ class $modify(XyzPerfPL, PlayLayer) {
 
     void updateVisibility(float dt) {
         if (xyz::cfg().skipVis && onSubTick(this)) return;
+        xyz::ProfScope s(xyz::P_VIS);
         PlayLayer::updateVisibility(dt);
     }
 };

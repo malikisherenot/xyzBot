@@ -23,7 +23,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
             computeWant();
             if (r.frozen) {
                 if (r.want != r.frozenWant) r.frozen = false;
-                else if (r.stepPending > 0) { r.stepPending--; r.frozen = false; GJBaseGameLayer::update((float)step); return true; }
+                else if (r.stepPending > 0) { r.stepPending--; r.frozen = false; XYZ_TIMED(P_UPD, GJBaseGameLayer::update((float)step)); return true; }
                 else return false;
             }
             if (vis::predictDeath(pl, std::clamp(c.pdLook, 1, 10))) {
@@ -31,7 +31,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
                 return false;
             }
         } else r.frozen = false;
-        GJBaseGameLayer::update((float)step);
+        XYZ_TIMED(P_UPD, GJBaseGameLayer::update((float)step));
         return true;
     }
 
@@ -42,6 +42,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
         bool mine = pl && (GJBaseGameLayer*)pl == this && !r.simulating;
         if (!mine) { GJBaseGameLayer::update(dt); return; }
         vis::rotRestore(pl);
+        xyz::ProfFrame pf;
 
         double tps = curTps();
         double step = 1.0 / tps;
@@ -52,7 +53,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
             r.stepPending -= n;
             for (int i = 0; i < n; ++i) {
                 r.subTick = i + 1 < n;
-                GJBaseGameLayer::update((float)step);
+                XYZ_TIMED(P_UPD, GJBaseGameLayer::update((float)step));
             }
             r.subTick = false;
             vis::refresh(pl);
@@ -68,7 +69,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
         }
 
         if ((tps == 240.0 && !pdActive(pl)) || m_resumeTimer > 0) {
-            GJBaseGameLayer::update(dt);
+            XYZ_TIMED(P_UPD, GJBaseGameLayer::update(dt));
             vis::refresh(pl);
             return;
         }
@@ -84,7 +85,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
         while (done < n) {
             r.subTick = done + 1 < n;
             if (pd) { if (!this->tickOnce(pl, step)) { blocked = true; break; } }
-            else GJBaseGameLayer::update((float)step);
+            else XYZ_TIMED(P_UPD, GJBaseGameLayer::update((float)step));
             ++done;
             if ((done & 7) == 0 && std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() > budget) break;
         }

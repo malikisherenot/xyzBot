@@ -1,6 +1,7 @@
 #pragma once
 #include <Geode/Geode.hpp>
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -43,7 +44,8 @@ struct Cfg {
     bool preventDeath = false;
     int pdLook = 2;
     bool trajAuto = false;
-    int trajLook = 6;
+    bool profiler = false;
+    int trajLook = 1;
     bool layout = false;
     bool speedAudio = true;
     bool autoExit = false;
@@ -96,6 +98,20 @@ struct Cfg {
 
 struct Ac { uint64_t last = UINT64_MAX; bool clicked = false; };
 
+enum ProfSlot { P_UPD, P_PLAYER, P_COLL, P_CAM, P_VIS, P_POST, P_PROC, P_LOOP, P_N };
+struct ProfOut {
+    bool valid = false;
+    double ticksPerSec = 0, framesPerSec = 0, ticksPerFrame = 0, frameMs = 0, loopMs = 0, drawMs = 0;
+    double upd = 0, player = 0, coll = 0, cam = 0, vis = 0, post = 0, proc = 0, other = 0;
+    double gainLo = 1, gainHi = 1;
+};
+struct Prof {
+    double acc[P_N] = {};
+    long long ticks = 0, frames = 0;
+    double gapUs = 0, winStart = 0, lastFrame = 0;
+    ProfOut out;
+};
+
 struct Rt {
     Mode mode = Mode::Off;
     uint32_t tick = 0;
@@ -104,6 +120,7 @@ struct Rt {
     std::array<bool, 6> held{};
     bool feeding = false, resetting = false, simulating = false, simDead = false;
     bool subTick = false;
+    Prof prof;
     bool loadedCp = false;
     int stepPending = 0;
     double leftover = 0.0;
@@ -165,6 +182,26 @@ Rt& rt();
 void loadCfg();
 void saveCfg();
 float curTps();
+
+struct RenderStats { bool on = false; double realSec = 0, videoSec = 0; long long frames = 0; int fps = 0; };
+RenderStats renderStats();
+void profFrame(double loopUs, double gapUs);
+inline double nowUs() { return std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+struct ProfScope {
+    int slot; double t0 = 0; bool on;
+    explicit ProfScope(int s) : slot(s), on(cfg().profiler) { if (on) t0 = nowUs(); }
+    ~ProfScope() { if (on) rt().prof.acc[slot] += nowUs() - t0; }
+};
+struct ProfFrame {
+    double t0 = 0, gap = 0; bool on;
+    ProfFrame() : on(cfg().profiler) {
+        if (!on) return;
+        static double last = 0;
+        t0 = nowUs(); gap = last > 0 ? t0 - last : 0; last = t0;
+    }
+    ~ProfFrame() { if (on) profFrame(nowUs() - t0, gap); }
+};
+#define XYZ_TIMED(slot, ...) do { xyz::ProfScope xyzPs(slot); __VA_ARGS__; } while (0)
 
 std::filesystem::path macroDir();
 std::vector<std::string> listMacros();

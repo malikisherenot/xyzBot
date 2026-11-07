@@ -8,6 +8,37 @@ Cfg& cfg() { static Cfg c; return c; }
 Rt& rt() { static Rt r; return r; }
 float curTps() { return cfg().tps ? std::max(1.f, cfg().tpsVal) : 240.f; }
 
+void profFrame(double loopUs, double gapUs) {
+    auto& p = rt().prof;
+    double now = nowUs();
+    if (p.lastFrame > 0 && now - p.lastFrame > 2e6) { p = Prof{}; }
+    p.lastFrame = now;
+    if (p.winStart == 0) p.winStart = now;
+    p.acc[P_LOOP] += loopUs; p.gapUs += gapUs; p.frames++;
+    if (now - p.winStart < 1e6) return;
+    double secs = (now - p.winStart) / 1e6, t = (double)p.ticks;
+    auto& o = p.out;
+    o.valid = p.ticks > 0 && p.frames > 0;
+    if (o.valid) {
+        o.ticksPerSec = t / secs; o.framesPerSec = (double)p.frames / secs; o.ticksPerFrame = t / (double)p.frames;
+        o.frameMs = p.gapUs / (double)p.frames / 1000.0;
+        o.loopMs = p.acc[P_LOOP] / (double)p.frames / 1000.0;
+        o.drawMs = std::max(0.0, o.frameMs - o.loopMs);
+        o.upd = p.acc[P_UPD] / t; o.player = p.acc[P_PLAYER] / t; o.coll = p.acc[P_COLL] / t;
+        o.cam = p.acc[P_CAM] / t; o.vis = p.acc[P_VIS] / t; o.post = p.acc[P_POST] / t; o.proc = p.acc[P_PROC] / t;
+        o.other = std::max(0.0, o.upd - o.player - o.coll - o.cam - o.vis - o.proc);
+        double n = std::max(1.0, o.ticksPerFrame), save = 1.0 - 1.0 / n;
+        double perCallLow = o.cam + o.vis, perCallHigh = o.cam + o.vis + o.other;
+        auto gain = [&](double perCall) {
+            double frameUs = o.frameMs * 1000.0, saved = perCall * save * n;
+            return frameUs - saved > 1.0 ? frameUs / (frameUs - saved) : 1.0;
+        };
+        o.gainLo = gain(perCallLow); o.gainHi = gain(perCallHigh);
+    }
+    for (auto& a : p.acc) a = 0;
+    p.ticks = 0; p.frames = 0; p.gapUs = 0; p.winStart = now;
+}
+
 #define LD(f, T) c.f = m->getSavedValue<T>(#f, c.f)
 #define SV(f, T) m->setSavedValue<T>(#f, c.f)
 
@@ -15,7 +46,7 @@ void loadCfg() {
     auto& c = cfg(); auto m = Mod::get();
     { int a = m->getSavedValue<int>("accuracy", -1); c.accuracy = a >= 0 ? std::min(a, 2) : (m->getSavedValue<bool>("fixes", true) ? 2 : 0); }
     LD(tps, bool); LD(tpsVal, double); LD(budgetMs, double); LD(speed, bool); LD(speedVal, double);
-    LD(noclip, bool); LD(trajAuto, bool); LD(trajLook, int); LD(fastSub, bool); LD(skipVis, bool); LD(ignoreLevel, bool); LD(hitboxes, bool);
+    LD(noclip, bool); LD(trajAuto, bool); LD(profiler, bool); LD(trajLook, int); LD(fastSub, bool); LD(skipVis, bool); LD(ignoreLevel, bool); LD(hitboxes, bool);
     LD(hbPlayer, bool); LD(hbSolid, bool); LD(hbHazard, bool); LD(hbSpecial, bool); LD(hbRotated, bool);
     LD(trail, bool); LD(trailLen, int); LD(traj, bool); LD(trajLen, int);
     LD(blockInputs, bool); LD(maintainGravity, bool); LD(mirror, bool); LD(mirrorInv, bool); LD(noMirror, bool);
@@ -66,7 +97,7 @@ void saveCfg() {
     auto& c = cfg(); auto m = Mod::get();
     SV(tps, bool); m->setSavedValue<double>("tpsVal", c.tpsVal); m->setSavedValue<double>("budgetMs", c.budgetMs);
     SV(speed, bool); m->setSavedValue<double>("speedVal", c.speedVal);
-    SV(noclip, bool); SV(accuracy, int); SV(trajAuto, bool); SV(trajLook, int); SV(fastSub, bool); SV(skipVis, bool); SV(ignoreLevel, bool); SV(hitboxes, bool);
+    SV(noclip, bool); SV(accuracy, int); SV(trajAuto, bool); SV(profiler, bool); SV(trajLook, int); SV(fastSub, bool); SV(skipVis, bool); SV(ignoreLevel, bool); SV(hitboxes, bool);
     SV(hbPlayer, bool); SV(hbSolid, bool); SV(hbHazard, bool); SV(hbSpecial, bool); SV(hbRotated, bool);
     SV(trail, bool); SV(trailLen, int); SV(traj, bool); SV(trajLen, int);
     SV(blockInputs, bool); SV(maintainGravity, bool); SV(mirror, bool); SV(mirrorInv, bool); SV(noMirror, bool);
