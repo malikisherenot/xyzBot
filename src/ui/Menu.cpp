@@ -165,6 +165,8 @@ static std::string helpText(std::string const& k) {
         {"Continue After Finish", "When a macro reaches its end, it keeps recording instead of stopping, so you can add more to it."},
         {"Fix Rotation Bug", "Fixes the ship, UFO, wave and swing tilt looking wrong at high TPS. Only changes how it looks, not the physics."},
         {"Wave Drag Fix", "Fixes the wave trail on D blocks (drag), slopes, portals and spider orbs, also at high TPS. Only changes the trail, not the physics."},
+        {"Trajectory Autoclicker", "Every tick it simulates what happens next. If your current input would die within the lookahead, it holds, releases or taps instead, whichever survives longest. Works while recording, so the clicks are saved in the macro."},
+        {"Click Lookahead", "How many ticks ahead the Trajectory Autoclicker looks. Higher sees danger earlier but costs more per tick."},
         {"Accuracy", "Vanilla: no position corrections. Input Fixes: the player position is stored and restored at every click. Frame Fixes: stored and restored every tick. A macro plays with whatever fixes it contains, so macros from xdBot load in any mode."},
         {"Fast Sub-Ticks", "At high TPS, skips the progress bar update on the ticks of a frame that are never drawn. Does not change the physics."},
         {"Skip Visibility On Sub-Ticks", "Experimental. Also skips the object visibility refresh on ticks that are never drawn. Faster on big levels, turn off if anything looks wrong."},
@@ -263,6 +265,7 @@ static std::function<void(double)> numSetter(std::string const& k) {
     if (k == "Trail Length") return I(&c.trailLen, 10, 2000);
     if (k == "Length") return I(&c.trajLen, 10, 2000);
     if (k == "Lookahead Ticks") return I(&c.pdLook, 1, 10);
+    if (k == "Click Lookahead") return I(&c.trajLook, 1, 20);
     if (k == "Interval (s)") return I(&c.autosaveSec, 10, 3600);
     if (k == "Width") return I(&c.renderW, 320, 3840);
     if (k == "FPS") return I(&c.renderFps, 10, 240);
@@ -826,6 +829,8 @@ void XyzMenu::rebuild(bool animate) {
     case 5:
         sec("SURVIVAL");
         tog("Prevent Death", c.preventDeath, [](bool v) { cfg().preventDeath = v; saveCfg(); }, "pd");
+        tog("Trajectory Autoclicker", c.trajAuto, [](bool v) { cfg().trajAuto = v; saveCfg(); });
+        num("Click Lookahead", [] { return fmt::format("{}", cfg().trajLook); }, [](int d) { cfg().trajLook = std::clamp(cfg().trajLook + d, 1, 20); saveCfg(); });
         sec("INPUT");
         tog("Maintain Gravity", c.maintainGravity, [](bool v) { cfg().maintainGravity = v; saveCfg(); });
         tog("Mirror Inputs", c.mirror, [](bool v) { cfg().mirror = v; saveCfg(); });
