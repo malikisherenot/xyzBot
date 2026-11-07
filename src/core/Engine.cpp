@@ -28,7 +28,7 @@ std::string macroFileName() {
 }
 
 static size_t hi(int button, bool p2) { return (p2 ? 3 : 0) + std::clamp(button, 1, 3) - 1; }
-static bool takeover() { auto& c = cfg(); return c.maintainGravity || c.mirror || c.acOn[0] || c.acOn[1] || c.inverse[0] || c.inverse[1]; }
+static bool takeover() { auto& c = cfg(); return c.maintainGravity || c.mirror || c.acOn[0] || c.acOn[1] || c.inverse[0] || c.inverse[1] || c.trajAuto; }
 
 static bool covers(int mode, bool p2) { return mode == 0 || (mode == 1 && !p2) || (mode == 2 && p2); }
 
@@ -147,8 +147,13 @@ static void drive(GJBaseGameLayer* gl) {
     if (r.mode == Mode::Play || !takeover()) return;
     acStep(gl, 0); acStep(gl, 1);
     computeWant();
-    for (int p = 0; p < 2; ++p)
-        if (r.want[p] != r.gameHeld[p]) press(gl, r.want[p], p);
+    vis::trajAdjust(gl);
+    for (int p = 0; p < 2; ++p) {
+        if (r.swiftNow[p]) {
+            if (r.gameHeld[p]) press(gl, false, p);
+            press(gl, true, p); press(gl, false, p);
+        } else if (r.want[p] != r.gameHeld[p]) press(gl, r.want[p], p);
+    }
 }
 
 static bool alignPlayback() {

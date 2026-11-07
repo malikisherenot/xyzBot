@@ -42,6 +42,8 @@ struct Cfg {
     bool mirror = false, mirrorInv = false, noMirror = false;
     bool preventDeath = false;
     int pdLook = 2;
+    bool trajAuto = false;
+    int trajLook = 6;
     bool layout = false;
     bool speedAudio = true;
     bool autoExit = false;
@@ -109,7 +111,7 @@ struct Rt {
     float prevTpsVal = 240.f;
     int64_t levelId = 0;
     bool internal = false;
-    std::array<bool, 2> userHeld{}, gameHeld{}, want{}, acHeld{}, frozenWant{};
+    std::array<bool, 2> userHeld{}, gameHeld{}, want{}, acHeld{}, frozenWant{}, swiftNow{};
     bool frozen = false;
     Ac ac[2];
     std::vector<double> cpsT[2];
