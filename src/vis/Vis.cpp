@@ -237,31 +237,57 @@ bool predictDeath(GJBaseGameLayer* pl, int look) {
 
 void trajAdjust(GJBaseGameLayer* pl) {
     auto& r = rt(); auto& c = cfg();
+    static std::array<bool, 2> lastWant{};
     r.swiftNow = {false, false};
-    if (!c.trajAuto || !g_fake[0] || !pl->m_player1 || pl->m_player1->m_isDead) return;
-    int look = std::clamp(c.trajLook, 1, 20);
+    if (!c.trajAuto || !g_fake[0] || !pl->m_player1 || pl->m_player1->m_isDead) { lastWant = r.want; return; }
+
+    std::array<bool, 2> base;
+    for (int p = 0; p < 2; ++p) {
+        bool edge = r.want[p] != lastWant[p];
+        base[p] = edge ? r.want[p] : r.gameHeld[p];
+        lastWant[p] = r.want[p];
+        r.want[p] = base[p];
+    }
+    auto watched = [&](int p) {
+        if (r.mode != Mode::Record) return true;
+        return c.recPlayers == 0 || (c.recPlayers == 1 && p == 0) || (c.recPlayers == 2 && p == 1);
+    };
+
+    int look = std::clamp(c.trajLook, 1, 240);
     bool dual = pl->m_gameState.m_isDualMode && pl->m_player2 && g_fake[1];
     bool two = pl->m_levelSettings && pl->m_levelSettings->m_twoPlayerMode;
     r.simulating = true;
-    auto eval = [&](int plan1, int plan2) {
-        int s = look;
-        if (plan1 >= 0) s = std::min(s, survival(pl, g_fake[0], pl->m_player1, plan1, r.gameHeld[0], look));
-        if (plan2 >= 0) s = std::min(s, survival(pl, g_fake[1], pl->m_player2, plan2, r.gameHeld[1], look));
+    auto eval = [&](int plan1, int plan2, int limit) {
+        int s = limit;
+        if (plan1 >= 0) s = std::min(s, survival(pl, g_fake[0], pl->m_player1, plan1, r.gameHeld[0], limit));
+        if (plan2 >= 0) s = std::min(s, survival(pl, g_fake[1], pl->m_player2, plan2, r.gameHeld[1], limit));
         return s;
     };
     auto decide = [&](bool use1, bool use2) {
-        int a1 = use1 ? (r.want[0] ? 1 : 0) : -1, a2 = use2 ? (r.want[1] ? 1 : 0) : -1;
-        int keep = eval(a1, a2);
-        if (keep >= look) return;
-        int flip = eval(a1 >= 0 ? 1 - a1 : -1, a2 >= 0 ? 1 - a2 : -1);
-        int swift = eval(a1 >= 0 ? 2 : -1, a2 >= 0 ? 2 : -1);
-        if (std::max(flip, swift) <= keep) return;
-        if (swift > flip) { r.swiftNow[0] = r.swiftNow[0] || use1; r.swiftNow[1] = r.swiftNow[1] || use2; }
-        else { if (use1) r.want[0] = !r.want[0]; if (use2) r.want[1] = !r.want[1]; }
+        int a1 = use1 ? (base[0] ? 1 : 0) : -1;
+        int a2 = use2 ? ((use1 ? base[0] : base[1]) ? 1 : 0) : -1;
+        int current = eval(a1, a2, look * 2);
+        bool deathNext = current == 0;
+        bool diesSoon = look > 1 && current < look;
+        if (!deathNext && !diesSoon) return;
+        int horizon = current > 0 ? look * 2 : std::max(look * 2, 120);
+        int flip = eval(a1 >= 0 ? 1 - a1 : -1, a2 >= 0 ? 1 - a2 : -1, horizon);
+        int swift = eval(a1 >= 0 ? 2 : -1, a2 >= 0 ? 2 : -1, horizon);
+        if (current > 0 && std::max(flip, swift) <= current) return;
+        if (swift > flip) {
+            if (use1) r.swiftNow[0] = true;
+            if (use2) r.swiftNow[1] = true;
+        } else {
+            if (use1) r.want[0] = !base[0];
+            if (use2) r.want[1] = use1 ? !base[0] : !base[1];
+        }
     };
-    if (!dual) decide(true, false);
-    else if (!two) decide(true, true);
-    else { decide(true, false); decide(false, true); }
+    if (!dual) { if (watched(0)) decide(true, false); }
+    else if (!two) { if (watched(0)) decide(true, true); }
+    else {
+        if (watched(0)) decide(true, false);
+        if (watched(1)) decide(false, true);
+    }
     r.simulating = false;
 }
 

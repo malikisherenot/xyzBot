@@ -135,6 +135,34 @@ std::vector<Def>& defs() {
     });
     add("start_pos", "Start Position", [](auto) { return fmt::format("Start Pos: x {:.2f}", rt().startX); });
     add("frame_budget", "Frame Budget", [](auto) { return fmt::format("Budget: {:.0f} ms", xyz::cfg().budgetMs); });
+    auto mmss = [](double s) { int t = std::max(0, (int)s); return fmt::format("{}:{:02}", t / 60, t % 60); };
+    add("render_speed", "Render Speed", [](auto) {
+        auto s = xyz::renderStats();
+        if (!s.on || s.realSec < 0.2) return std::string("Render Speed: not rendering");
+        return fmt::format("Render Speed: {:.2f}x | {:.1f} fps", s.videoSec / s.realSec, (double)s.frames / s.realSec);
+    });
+    add("render_time", "Render Time", [=](auto) {
+        auto s = xyz::renderStats();
+        if (!s.on) return std::string("Render Time: not rendering");
+        return fmt::format("Render Time: {} | Video: {}", mmss(s.realSec), mmss(s.videoSec));
+    });
+    auto prof = [](auto fn) {
+        return [fn](CCLabelBMFont*) {
+            if (!xyz::cfg().profiler) return std::string("Profiler: off (TPS settings)");
+            auto& o = xyz::rt().prof.out;
+            if (!o.valid) return std::string("Profiler: measuring...");
+            return fn(o);
+        };
+    };
+    add("prof_frame", "Profiler: Frame", prof([](xyz::ProfOut const& o) {
+        return fmt::format("Frame {:.1f}ms: ticks {:.1f} | draw/idle {:.1f} | {:.0f}/frame, {:.0f} TPS", o.frameMs, o.loopMs, o.drawMs, o.ticksPerFrame, o.ticksPerSec);
+    }));
+    add("prof_tick", "Profiler: Per Tick", prof([](xyz::ProfOut const& o) {
+        return fmt::format("Per tick (us): update {:.1f} = player {:.1f} + coll {:.1f} + cmds {:.1f} + cam {:.1f} + vis {:.1f} + other {:.1f}", o.upd, o.player, o.coll, o.proc, o.cam, o.vis, o.other);
+    }));
+    add("prof_gain", "Profiler: Batch Gain", prof([](xyz::ProfOut const& o) {
+        return fmt::format("Batching gain estimate: {:.2f}x to {:.2f}x (post-update {:.1f}us/tick)", o.gainLo, o.gainHi, o.post);
+    }));
     static std::map<std::string, std::string> const H = {
         {"tick", "Ticks since the attempt started, as the bot counts them."},
         {"game_tick", "The game's own internal step counter."},
@@ -155,6 +183,11 @@ std::vector<Def>& defs() {
         {"ssb_factor", "Scroll speed bug multiplier. 1 means the bug is not happening."},
         {"ssb_event", "Shows when the scroll speed bug happens and how many times it has."},
         {"frame_budget", "Time the bot may spend on physics each frame."},
+        {"render_speed", "How fast the render goes compared to the video: 2x means 2 seconds of video per real second. Not shown in the video."},
+        {"render_time", "Real time spent rendering and the length of video made so far. Not shown in the video."},
+        {"prof_frame", "Profiler: how long a frame takes, and how much of it is spent running ticks. Turn the Profiler on in the TPS settings. Not shown in the video."},
+        {"prof_tick", "Profiler: average time per tick and where it goes. Turn the Profiler on in the TPS settings. Not shown in the video."},
+        {"prof_gain", "Profiler: rough range of how much faster running many ticks per update call could make a frame. Turn the Profiler on in the TPS settings."},
     };
     for (auto& x : d) if (auto it = H.find(x.id); it != H.end()) x.help = it->second;
     return d;
@@ -167,6 +200,17 @@ std::string const& name(size_t i) { return defs()[i].name; }
 Cfg& cfg(size_t i) { return defs()[i].c; }
 std::string const& help(size_t i) { return defs()[i].help; }
 void invalidate() { g_refresh = true; }
+void captureHide(bool hide) {
+    static std::vector<std::pair<CCNode*, bool>> saved;
+    if (hide) {
+        saved.clear();
+        for (auto& l : defs())
+            if (l.node && (l.id.rfind("render_", 0) == 0 || l.id.rfind("prof_", 0) == 0)) { saved.push_back({l.node, l.node->isVisible()}); l.node->setVisible(false); }
+    } else {
+        for (auto& [n, v] : saved) n->setVisible(v);
+        saved.clear();
+    }
+}
 void setAllColor(int r, int g, int b) {
     for (size_t i = 0; i < defs().size(); ++i) { auto& c = defs()[i].c; c.r = r; c.g = g; c.b = b; save(i); }
 }

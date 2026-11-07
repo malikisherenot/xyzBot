@@ -23,4 +23,5 @@ std::string const& help(size_t i);
 void save(size_t i);
 void invalidate();
 void setAllColor(int r, int g, int b);
+void captureHide(bool hide);
 }
