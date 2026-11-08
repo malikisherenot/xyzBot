@@ -158,10 +158,10 @@ std::vector<Def>& defs() {
         return fmt::format("Frame {:.1f}ms: ticks {:.1f} | draw/idle {:.1f} | {:.0f}/frame, {:.0f} TPS", o.frameMs, o.loopMs, o.drawMs, o.ticksPerFrame, o.ticksPerSec);
     }));
     add("prof_tick", "Profiler: Per Tick", prof([](xyz::ProfOut const& o) {
-        return fmt::format("Per tick (us): update {:.1f} = player {:.1f} + coll {:.1f} + cmds {:.1f} + cam {:.1f} + vis {:.1f} + other {:.1f}", o.upd, o.player, o.coll, o.proc, o.cam, o.vis, o.other);
+        return fmt::format("Per tick (us): update {:.0f} = player {:.0f} + coll {:.0f} + cmds {:.0f} + fx {:.0f} + enter {:.0f} + cam {:.0f} + vis {:.0f} + other {:.0f}", o.upd, o.player, o.coll, o.proc, o.fx, o.enter, o.cam, o.vis, o.other);
     }));
     add("prof_gain", "Profiler: Batch Gain", prof([](xyz::ProfOut const& o) {
-        return fmt::format("Batching gain estimate: {:.2f}x to {:.2f}x (post-update {:.1f}us/tick)", o.gainLo, o.gainHi, o.post);
+        return fmt::format("Tick capacity {:.0f} TPS | batching: {:.2f}x sure, {:.2f}x likely, {:.2f}x best case", o.capNow, o.gainLo, o.gainMid, o.gainHi);
     }));
     static std::map<std::string, std::string> const H = {
         {"tick", "Ticks since the attempt started, as the bot counts them."},
@@ -187,7 +187,7 @@ std::vector<Def>& defs() {
         {"render_time", "Real time spent rendering and the length of video made so far. Not shown in the video."},
         {"prof_frame", "Profiler: how long a frame takes, and how much of it is spent running ticks. Turn the Profiler on in the TPS settings. Not shown in the video."},
         {"prof_tick", "Profiler: average time per tick and where it goes. Turn the Profiler on in the TPS settings. Not shown in the video."},
-        {"prof_gain", "Profiler: rough range of how much faster running many ticks per update call could make a frame. Turn the Profiler on in the TPS settings."},
+        {"prof_gain", "Profiler: tick capacity is how many ticks per second the game could run if ticks used the whole frame. Batching shows how much faster running many ticks per update call could make the tick part: sure counts camera and visibility only, likely adds effects, best case treats all remaining time as per-call. Turn the Profiler on in the TPS settings."},
     };
     for (auto& x : d) if (auto it = H.find(x.id); it != H.end()) x.help = it->second;
     return d;
