@@ -1,11 +1,12 @@
 # Changelog
 
-## v1.17.0
+## v1.17.0 {Private}
 - Auto updater: checks GitHub once a day for a new release, shows its changelog in the xyzBot menu (Bot > Updates), and downloads it in-game after you confirm. The download is checked against a SHA-256 file before it replaces the mod, and the old file is kept as a backup. Restart the game to finish
 - The build workflow now also produces the .sha256 file; upload it to the release next to the .geode
 
 ## v1.16.1
-- Profiler: the batching estimate now uses tick time instead of the whole frame (which was dominated by vsync idle), shows tick capacity in TPS, and has three estimates; collisions, effects and enter effects are timed separately
+- Fixed some bugs
+- Improved Profiler 
 
 ## v1.16.0
 - Profiler (TPS settings) with three labels: frame time split between ticks and drawing, cost per tick by part, and an estimate of how much batching ticks could gain
