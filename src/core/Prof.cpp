@@ -1,5 +1,6 @@
 #include "State.hpp"
 #include <Geode/modify/GJBaseGameLayer.hpp>
+#include <Geode/modify/GJEffectManager.hpp>
 #include <Geode/modify/PlayerObject.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 
@@ -19,11 +20,6 @@ class $modify(XyzProfGL, GJBaseGameLayer) {
         xyz::ProfScope s(xyz::P_COLL);
         GJBaseGameLayer::collisionCheckObjects(player, objects, length, dt);
     }
-    void updateEffects(float dt) {
-        if (!xyz::cfg().profiler || xyz::rt().simulating) { GJBaseGameLayer::updateEffects(dt); return; }
-        xyz::ProfScope s(xyz::P_FX);
-        GJBaseGameLayer::updateEffects(dt);
-    }
     void updateEnterEffects(float dt) {
         if (!xyz::cfg().profiler || xyz::rt().simulating) { GJBaseGameLayer::updateEnterEffects(dt); return; }
         xyz::ProfScope s(xyz::P_ENTER);
@@ -33,6 +29,14 @@ class $modify(XyzProfGL, GJBaseGameLayer) {
         if (!xyz::cfg().profiler || xyz::rt().simulating) { GJBaseGameLayer::updateCamera(dt); return; }
         xyz::ProfScope s(xyz::P_CAM);
         GJBaseGameLayer::updateCamera(dt);
+    }
+};
+
+class $modify(XyzProfFx, GJEffectManager) {
+    void updateEffects(float dt) {
+        if (!xyz::cfg().profiler || xyz::rt().simulating) { GJEffectManager::updateEffects(dt); return; }
+        xyz::ProfScope s(xyz::P_FX);
+        GJEffectManager::updateEffects(dt);
     }
 };
 
