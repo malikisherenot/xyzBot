@@ -26,14 +26,17 @@ void profFrame(double loopUs, double gapUs) {
         o.drawMs = std::max(0.0, o.frameMs - o.loopMs);
         o.upd = p.acc[P_UPD] / t; o.player = p.acc[P_PLAYER] / t; o.coll = p.acc[P_COLL] / t;
         o.cam = p.acc[P_CAM] / t; o.vis = p.acc[P_VIS] / t; o.post = p.acc[P_POST] / t; o.proc = p.acc[P_PROC] / t;
-        o.other = std::max(0.0, o.upd - o.player - o.coll - o.cam - o.vis - o.proc);
-        double n = std::max(1.0, o.ticksPerFrame), save = 1.0 - 1.0 / n;
-        double perCallLow = o.cam + o.vis, perCallHigh = o.cam + o.vis + o.other;
+        o.fx = p.acc[P_FX] / t; o.enter = p.acc[P_ENTER] / t;
+        o.other = std::max(0.0, o.upd - o.player - o.coll - o.cam - o.vis - o.proc - o.fx - o.enter);
+        double n = std::max(1.0, o.ticksPerFrame), save = 1.0 - 1.0 / n, loopUs = o.loopMs * 1000.0;
         auto gain = [&](double perCall) {
-            double frameUs = o.frameMs * 1000.0, saved = perCall * save * n;
-            return frameUs - saved > 1.0 ? frameUs / (frameUs - saved) : 1.0;
+            double saved = perCall * save * n;
+            return loopUs - saved > 1.0 ? loopUs / (loopUs - saved) : 1.0;
         };
-        o.gainLo = gain(perCallLow); o.gainHi = gain(perCallHigh);
+        o.gainLo = gain(o.cam + o.vis);
+        o.gainMid = gain(o.cam + o.vis + o.fx + o.enter);
+        o.gainHi = gain(o.cam + o.vis + o.fx + o.enter + o.other);
+        o.capNow = loopUs > 1.0 ? n / loopUs * 1e6 : 0.0;
     }
     for (auto& a : p.acc) a = 0;
     p.ticks = 0; p.frames = 0; p.gapUs = 0; p.winStart = now;
@@ -46,7 +49,7 @@ void loadCfg() {
     auto& c = cfg(); auto m = Mod::get();
     { int a = m->getSavedValue<int>("accuracy", -1); c.accuracy = a >= 0 ? std::min(a, 2) : (m->getSavedValue<bool>("fixes", true) ? 2 : 0); }
     LD(tps, bool); LD(tpsVal, double); LD(budgetMs, double); LD(speed, bool); LD(speedVal, double);
-    LD(noclip, bool); LD(trajAuto, bool); LD(profiler, bool); LD(trajLook, int); LD(fastSub, bool); LD(skipVis, bool); LD(ignoreLevel, bool); LD(hitboxes, bool);
+    LD(noclip, bool); LD(trajAuto, bool); LD(profiler, bool); LD(autoUpdate, bool); LD(trajLook, int); LD(fastSub, bool); LD(skipVis, bool); LD(ignoreLevel, bool); LD(hitboxes, bool);
     LD(hbPlayer, bool); LD(hbSolid, bool); LD(hbHazard, bool); LD(hbSpecial, bool); LD(hbRotated, bool);
     LD(trail, bool); LD(trailLen, int); LD(traj, bool); LD(trajLen, int);
     LD(blockInputs, bool); LD(maintainGravity, bool); LD(mirror, bool); LD(mirrorInv, bool); LD(noMirror, bool);
@@ -97,7 +100,7 @@ void saveCfg() {
     auto& c = cfg(); auto m = Mod::get();
     SV(tps, bool); m->setSavedValue<double>("tpsVal", c.tpsVal); m->setSavedValue<double>("budgetMs", c.budgetMs);
     SV(speed, bool); m->setSavedValue<double>("speedVal", c.speedVal);
-    SV(noclip, bool); SV(accuracy, int); SV(trajAuto, bool); SV(profiler, bool); SV(trajLook, int); SV(fastSub, bool); SV(skipVis, bool); SV(ignoreLevel, bool); SV(hitboxes, bool);
+    SV(noclip, bool); SV(accuracy, int); SV(trajAuto, bool); SV(profiler, bool); SV(autoUpdate, bool); SV(trajLook, int); SV(fastSub, bool); SV(skipVis, bool); SV(ignoreLevel, bool); SV(hitboxes, bool);
     SV(hbPlayer, bool); SV(hbSolid, bool); SV(hbHazard, bool); SV(hbSpecial, bool); SV(hbRotated, bool);
     SV(trail, bool); SV(trailLen, int); SV(traj, bool); SV(trajLen, int);
     SV(blockInputs, bool); SV(maintainGravity, bool); SV(mirror, bool); SV(mirrorInv, bool); SV(noMirror, bool);

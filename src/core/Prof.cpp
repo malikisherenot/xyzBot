@@ -14,10 +14,20 @@ class $modify(XyzProfPlayer, PlayerObject) {
 };
 
 class $modify(XyzProfGL, GJBaseGameLayer) {
-    void checkCollisions(PlayerObject* p, float dt, bool b) {
-        if (!xyz::cfg().profiler || xyz::rt().simulating) { GJBaseGameLayer::checkCollisions(p, dt, b); return; }
+    void collisionCheckObjects(PlayerObject* player, gd::vector<GameObject*>* objects, int length, float dt) {
+        if (!xyz::cfg().profiler || xyz::rt().simulating) { GJBaseGameLayer::collisionCheckObjects(player, objects, length, dt); return; }
         xyz::ProfScope s(xyz::P_COLL);
-        GJBaseGameLayer::checkCollisions(p, dt, b);
+        GJBaseGameLayer::collisionCheckObjects(player, objects, length, dt);
+    }
+    void updateEffects(float dt) {
+        if (!xyz::cfg().profiler || xyz::rt().simulating) { GJBaseGameLayer::updateEffects(dt); return; }
+        xyz::ProfScope s(xyz::P_FX);
+        GJBaseGameLayer::updateEffects(dt);
+    }
+    void updateEnterEffects(float dt) {
+        if (!xyz::cfg().profiler || xyz::rt().simulating) { GJBaseGameLayer::updateEnterEffects(dt); return; }
+        xyz::ProfScope s(xyz::P_ENTER);
+        GJBaseGameLayer::updateEnterEffects(dt);
     }
     void updateCamera(float dt) {
         if (!xyz::cfg().profiler || xyz::rt().simulating) { GJBaseGameLayer::updateCamera(dt); return; }

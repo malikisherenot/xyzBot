@@ -45,6 +45,7 @@ struct Cfg {
     int pdLook = 2;
     bool trajAuto = false;
     bool profiler = false;
+    bool autoUpdate = true;
     int trajLook = 1;
     bool layout = false;
     bool speedAudio = true;
@@ -98,12 +99,12 @@ struct Cfg {
 
 struct Ac { uint64_t last = UINT64_MAX; bool clicked = false; };
 
-enum ProfSlot { P_UPD, P_PLAYER, P_COLL, P_CAM, P_VIS, P_POST, P_PROC, P_LOOP, P_N };
+enum ProfSlot { P_UPD, P_PLAYER, P_COLL, P_CAM, P_VIS, P_POST, P_PROC, P_FX, P_ENTER, P_LOOP, P_N };
 struct ProfOut {
     bool valid = false;
     double ticksPerSec = 0, framesPerSec = 0, ticksPerFrame = 0, frameMs = 0, loopMs = 0, drawMs = 0;
-    double upd = 0, player = 0, coll = 0, cam = 0, vis = 0, post = 0, proc = 0, other = 0;
-    double gainLo = 1, gainHi = 1;
+    double upd = 0, player = 0, coll = 0, cam = 0, vis = 0, post = 0, proc = 0, fx = 0, enter = 0, other = 0;
+    double gainLo = 1, gainMid = 1, gainHi = 1, capNow = 0;
 };
 struct Prof {
     double acc[P_N] = {};
