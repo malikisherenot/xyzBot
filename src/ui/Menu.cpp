@@ -1,5 +1,4 @@
 #include "Menu.hpp"
-#include "../core/Updater.hpp"
 #include "Glass.hpp"
 #include "Draw.hpp"
 #include "../core/State.hpp"
@@ -169,7 +168,6 @@ static std::string helpText(std::string const& k) {
         {"Trajectory Autoclicker", "Every tick it simulates what happens if the current input state continues. If that dies within the lookahead, it holds, releases or taps instead, whichever survives longest. Works while recording, so the clicks are saved in the macro. Orbs, pads and portals are not simulated yet."},
         {"Click Lookahead", "How many ticks ahead the Trajectory Autoclicker looks. 1 only reacts to death on the next tick (Echo default). Higher reacts earlier but costs more per tick."},
         {"Profiler", "Times what a tick costs and where it goes, and estimates how much faster running many ticks in one update call could be. Show the results with the Profiler labels (Labels page). Costs a little speed itself, turn it off when you are done."},
-        {"Check For Updates On Start", "Once a day, when the game starts, checks GitHub for a newer xyzBot and tells you if there is one. Nothing is downloaded until you press Download."},
         {"Accuracy", "Vanilla: no position corrections. Input Fixes: the player position is stored and restored at every click. Frame Fixes: stored and restored every tick. A macro plays with whatever fixes it contains, so macros from xdBot load in any mode."},
         {"Fast Sub-Ticks", "At high TPS, skips the progress bar update on the ticks of a frame that are never drawn. Does not change the physics."},
         {"Skip Visibility On Sub-Ticks", "Experimental. Also skips the object visibility refresh on ticks that are never drawn. Faster on big levels, turn off if anything looks wrong."},
@@ -413,7 +411,6 @@ bool XyzMenu::init() {
     m_mainLayer->runAction(CCEaseExponentialOut::create(CCScaleTo::create(.26f, 1.f)));
     m_mainLayer->runAction(CCEaseExponentialOut::create(CCMoveBy::create(.26f, {0, 10.f})));
     this->schedule(schedule_selector(XyzMenu::fadeStep));
-    this->schedule(schedule_selector(XyzMenu::pollUpdate), 0.4f);
     return true;
 }
 
@@ -444,13 +441,6 @@ void XyzMenu::fadeStep(float dt) {
     m_fade = std::clamp(m_fade + dt * (m_closing ? -8.f : 6.f), 0.f, 1.f);
     if (m_glass) glass::setAlpha(m_glass, m_fade);
     if (!m_closing && m_fade >= 1.f) this->unschedule(schedule_selector(XyzMenu::fadeStep));
-}
-
-void XyzMenu::pollUpdate(float) {
-    int st = (int)updater::state();
-    if (st == m_updSeen) return;
-    m_updSeen = st;
-    if (m_sub == "update" || (m_tab == 0 && m_sub.empty())) this->later(true);
 }
 
 void XyzMenu::onClose(CCObject*) {
@@ -576,20 +566,6 @@ void XyzMenu::rebuild(bool animate) {
             tog("Skip Visibility On Sub-Ticks", c.skipVis, [](bool v) { cfg().skipVis = v; saveCfg(); });
             sec("PROFILER");
             tog("Profiler", c.profiler, [](bool v) { cfg().profiler = v; rt().prof = Prof{}; saveCfg(); });
-        } else if (sub == "update") {
-            auto st = updater::state();
-            sec("UPDATE " + updater::latest());
-            txt(updater::message());
-            if (st == updater::State::Available || st == updater::State::Failed) {
-                std::vector<std::pair<std::string, std::function<void()>>> p;
-                if (st == updater::State::Available) p.push_back({"Download", [this] { updater::download(); this->later(true); }});
-                p.push_back({"Open Releases", [] { geode::utils::web::openLinkInBrowser(updater::releasesUrl()); }});
-                pills(std::move(p));
-            } else if (st == updater::State::Done) {
-                pills({{"Restart Game", [] { updater::restart(); }}});
-            }
-            sec("CHANGELOG");
-            for (auto const& l : updater::notes()) txt(l);
         } else if (sub == "speed") {
             sec("SPEEDHACK SETTINGS");
             num("Speed", [] { return fmt::format("{:.2f}", cfg().speedVal); }, [](int d) { cfg().speedVal = std::clamp(cfg().speedVal + d * 0.1f, 0.05f, 100.f); saveCfg(); });
@@ -731,17 +707,6 @@ void XyzMenu::rebuild(bool animate) {
         sec("AUTOMATION");
         tog("Autosave While Recording", c.autosave, [](bool v) { cfg().autosave = v; saveCfg(); }, "autosave");
         tog("Auto Exit On Finish", c.autoExit, [](bool v) { cfg().autoExit = v; saveCfg(); });
-        sec("UPDATES");
-        {
-            auto st = updater::state();
-            txt(st == updater::State::Idle ? std::string("Not checked yet.") : updater::message());
-            std::vector<std::pair<std::string, std::function<void()>>> p;
-            p.push_back({"Check Now", [this] { updater::check(true); this->later(false); }});
-            if (st == updater::State::Available) p.push_back({"Changelog & Download", [this] { m_sub = "update"; this->later(true); }});
-            if (st == updater::State::Done) p.push_back({"Restart Game", [] { updater::restart(); }});
-            pills(std::move(p));
-        }
-        tog("Check For Updates On Start", c.autoUpdate, [](bool v) { cfg().autoUpdate = v; saveCfg(); });
         break;
     }
     case 1:

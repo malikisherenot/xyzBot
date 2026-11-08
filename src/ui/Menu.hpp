@@ -10,8 +10,6 @@ class XyzMenu : public geode::Popup {
     std::string m_sub;
     std::string m_mergeBase;
     std::string m_query;
-    int m_updSeen = -1;
-    void pollUpdate(float dt);
     float m_w = 0.f, m_h = 0.f;
     geode::ScrollLayer* m_scroll = nullptr;
     cocos2d::CCNode* m_side = nullptr;
