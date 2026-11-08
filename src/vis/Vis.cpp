@@ -1,4 +1,5 @@
 #include "Vis.hpp"
+#include <Geode/binding/PlayLayer.hpp>
 #include "../core/State.hpp"
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/PlayerObject.hpp>
@@ -200,7 +201,7 @@ void attach(GJBaseGameLayer* pl) {
     pl->m_objectLayer->addChild(g_hb, 1000);
     pl->m_objectLayer->addChild(g_tr, 1001);
     for (auto& f : g_fake) {
-        f = PlayerObject::create(1, 1, pl, pl, true);
+        f = PlayerObject::create(1, 1, pl, pl, geode::cast::typeinfo_cast<PlayLayer*>(pl) != nullptr);
         f->retain();
         f->setVisible(false);
         pl->m_objectLayer->addChild(f);
