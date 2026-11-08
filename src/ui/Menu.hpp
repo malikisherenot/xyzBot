@@ -34,6 +34,7 @@ class XyzMenu : public geode::Popup {
     void fadeStep(float dt);
     void doClose(float dt);
 public:
+    ~XyzMenu();
     static XyzMenu* create();
     static void toggle();
     void onClose(cocos2d::CCObject*) override;

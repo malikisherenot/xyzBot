@@ -347,8 +347,13 @@ XyzMenu* XyzMenu::create() {
     return nullptr;
 }
 
+XyzMenu::~XyzMenu() {
+    if (s_open == this) s_open = nullptr;
+}
+
 void XyzMenu::toggle() {
-    if (s_open) { s_open->onClose(nullptr); return; }
+    if (s_open && s_open->getParent()) { s_open->onClose(nullptr); return; }
+    s_open = nullptr;
     s_open = create();
     if (s_open) s_open->show();
 }
@@ -915,6 +920,10 @@ void XyzMenu::rebuild(bool animate) {
             cfg().renderMacro = slot == 0 ? std::string() : names[slot - 1];
             saveCfg(); });
         sec("VIDEO");
+        txt(fmt::format("Height: {} (follows the shape of your screen)", [] {
+            auto ws = CCDirector::get()->getWinSize();
+            return (int)std::lround(std::clamp(cfg().renderW, 320, 3840) / 2 * 2 * ws.height / ws.width) / 2 * 2;
+        }()));
         num("Width", [] { return fmt::format("{}", cfg().renderW); }, [](int d) { cfg().renderW = std::clamp(cfg().renderW + d * 160, 320, 3840); saveCfg(); });
         num("FPS", [] { return fmt::format("{}", cfg().renderFps); }, [](int d) { cfg().renderFps = std::clamp(cfg().renderFps + d * 10, 10, 240); saveCfg(); });
         num("Bitrate (Mbps)", [] { return fmt::format("{}", cfg().renderBitrate); }, [](int d) { cfg().renderBitrate = std::clamp(cfg().renderBitrate + d, 1, 200); saveCfg(); });
