@@ -1,4 +1,6 @@
 #include "Menu.hpp"
+#include "../core/Updater.hpp"
+#include <set>
 #include "Glass.hpp"
 #include "Draw.hpp"
 #include "../core/State.hpp"
@@ -17,6 +19,10 @@ using namespace xyz::draw;
 static XyzMenu* s_open = nullptr;
 static constexpr float SW = 98.f;
 static constexpr float ROW = 30.f;
+static int s_startTab = 0;
+static bool paper() { return cfg().uiStyle == 1; }
+static std::set<std::string>& closedSecs() { static std::set<std::string> s; return s; }
+static ccColor4F pGray(float v, float a = 1.f) { return {v, v, v, a}; }
 
 static ccColor4F acc(float a = 1.f, float mul = 1.f) {
     auto& c = cfg();
@@ -38,6 +44,29 @@ static int const LABEL_COLORS[][3] = {
 };
 
 static CCMenuItemSpriteExtra* makeSwitch(bool on, std::function<void(bool)> cb) {
+    if (paper()) {
+        auto node = CCNode::create();
+        node->setContentSize({18, 18});
+        auto bx = CCDrawNode::create(); node->addChild(bx);
+        auto ck = CCDrawNode::create(); node->addChild(ck, 1);
+        auto st = std::make_shared<bool>(on);
+        auto draw = [bx, ck, st] {
+            bx->clear(); ck->clear();
+            rrect(bx, {0, 0}, {18, 18}, 3, pGray(0.2f), 1.f, *st ? accL(1.f) : pGray(0.42f));
+            if (*st) {
+                ck->drawSegment({4.5f, 9.f}, {7.8f, 5.4f}, 1.1f, pm(accL(1.f)));
+                ck->drawSegment({7.8f, 5.4f}, {13.5f, 12.6f}, 1.1f, pm(accL(1.f)));
+            }
+        };
+        draw();
+        return CCMenuItemExt::createSpriteExtra(node, [st, draw, cb, node](auto) {
+            *st = !*st; draw();
+            node->stopAllActions();
+            node->setScale(.8f);
+            node->runAction(CCEaseBackOut::create(CCScaleTo::create(.22f, 1.f)));
+            cb(*st);
+        });
+    }
     auto node = CCNode::create();
     node->setContentSize({42, 22});
     auto tr = CCDrawNode::create(); node->addChild(tr);
@@ -66,7 +95,8 @@ static CCMenuItemSpriteExtra* makePill(std::string const& text, bool accent, std
     auto node = CCNode::create();
     node->setContentSize({w, 20});
     auto d = CCDrawNode::create();
-    rrect(d, {0, 0}, {w, 20}, 10, accent ? acc(0.9f, 0.75f) : ccc4f(1, 1, 1, 0.12f), 1.f, accent ? accL(0.8f) : ccc4f(1, 1, 1, 0.25f));
+    if (paper()) rrect(d, {0, 0}, {w, 20}, 3, accent ? acc(1.f, 0.6f) : pGray(0.2f), 1.f, accent ? accL(0.9f) : pGray(0.42f));
+    else rrect(d, {0, 0}, {w, 20}, 10, accent ? acc(0.9f, 0.75f) : ccc4f(1, 1, 1, 0.12f), 1.f, accent ? accL(0.8f) : ccc4f(1, 1, 1, 0.25f));
     node->addChild(d);
     lbl->setPosition({w / 2, 10});
     node->addChild(lbl);
@@ -77,7 +107,8 @@ static CCMenuItemSpriteExtra* makeRound(char const* glyph, std::function<void()>
     auto node = CCNode::create();
     node->setContentSize({20, 20});
     auto d = CCDrawNode::create();
-    disc(d, {10, 10}, 10.f, ccc4f(1, 1, 1, 0.13f), 1.f, ccc4f(1, 1, 1, 0.3f), 24);
+    if (paper()) rrect(d, {0, 0}, {20, 20}, 3, pGray(0.2f), 1.f, pGray(0.42f));
+    else disc(d, {10, 10}, 10.f, ccc4f(1, 1, 1, 0.13f), 1.f, ccc4f(1, 1, 1, 0.3f), 24);
     node->addChild(d);
     auto l = mkLabel(glyph);
     sc(l, .42f); l->setPosition({10, 10});
@@ -86,6 +117,15 @@ static CCMenuItemSpriteExtra* makeRound(char const* glyph, std::function<void()>
 }
 
 static CCMenuItemSpriteExtra* makeGear(std::function<void()> cb) {
+    if (paper()) {
+        auto node = CCNode::create();
+        node->setContentSize({22, 20});
+        auto d = CCDrawNode::create();
+        rrect(d, {0, 0}, {22, 20}, 3, pGray(0.2f), 1.f, pGray(0.42f));
+        poly(d, {{8.f, 5.5f}, {8.f, 14.5f}, {14.5f, 10.f}}, pGray(0.85f));
+        node->addChild(d);
+        return CCMenuItemExt::createSpriteExtra(node, [cb](auto) { cb(); });
+    }
     auto node = CCNode::create();
     node->setContentSize({22, 22});
     auto d = CCDrawNode::create();
@@ -168,6 +208,8 @@ static std::string helpText(std::string const& k) {
         {"Trajectory Autoclicker", "Every tick it simulates what happens if the current input state continues. If that dies within the lookahead, it holds, releases or taps instead, whichever survives longest. Works while recording, so the clicks are saved in the macro. Orbs, pads and portals are not simulated yet."},
         {"Click Lookahead", "How many ticks ahead the Trajectory Autoclicker looks. 1 only reacts to death on the next tick (Echo default). Higher reacts earlier but costs more per tick."},
         {"Profiler", "Times what a tick costs and where it goes, and estimates how much faster running many ticks in one update call could be. Show the results with the Profiler labels (Labels page). Costs a little speed itself, turn it off when you are done."},
+        {"Check For Updates On Start", "Once a day, when the game starts, checks GitHub for a newer xyzBot and tells you if there is one. Nothing is downloaded until you press Download."},
+        {"UI Style", "Glass is the blurred panel with the tabs on the side. Paper is a plain flat panel with the tabs on top. The menu reopens when you switch."},
         {"Accuracy", "Vanilla: no position corrections. Input Fixes: the player position is stored and restored at every click. Frame Fixes: stored and restored every tick. A macro plays with whatever fixes it contains, so macros from xdBot load in any mode."},
         {"Fast Sub-Ticks", "At high TPS, skips the progress bar update on the ticks of a frame that are never drawn. Does not change the physics."},
         {"Skip Visibility On Sub-Ticks", "Experimental. Also skips the object visibility refresh on ticks that are never drawn. Faster on big levels, turn off if anything looks wrong."},
@@ -233,6 +275,12 @@ static std::string helpText(std::string const& k) {
 static CCMenuItemSpriteExtra* makeHelp(std::string title, std::string text) {
     auto node = CCNode::create();
     node->setContentSize({16, 16});
+    if (paper()) {
+        auto l = mkLabel("(?)");
+        sc(l, .34f); l->setOpacity(130); l->setPosition({8, 8});
+        node->addChild(l);
+        return CCMenuItemExt::createSpriteExtra(node, [title, text](auto) { FLAlertLayer::create(title.c_str(), text, "OK")->show(); });
+    }
     auto d = CCDrawNode::create();
     disc(d, {8, 8}, 7.5f, ccc4f(1, 1, 1, 0.07f), 1.f, ccc4f(1, 1, 1, 0.3f), 20);
     node->addChild(d);
@@ -356,6 +404,32 @@ void XyzMenu::toggle() {
     if (s_open) s_open->show();
 }
 
+void XyzMenu::restyle() {
+    s_startTab = m_tab;
+    this->onClose(nullptr);
+    queueInMainThread([] { XyzMenu::toggle(); });
+}
+
+void XyzMenu::drawPanel() {
+    if (!m_panel) return;
+    m_panel->clear();
+    float h = m_collapsed ? 34.f : m_h;
+    rrect(m_panel, {0, m_h - h}, {m_w, h}, 5, ccc4f(0.105f, 0.105f, 0.105f, 0.98f), 1.f, pGray(0.28f));
+    if (!m_collapsed) {
+        m_panel->drawSegment({1.f, m_h - 34.f}, {m_w - 1.f, m_h - 34.f}, 0.5f, pm(pGray(0.28f)));
+        m_panel->drawSegment({1.f, m_h - 64.f}, {m_w - 1.f, m_h - 64.f}, 0.5f, pm(pGray(0.2f)));
+    }
+}
+
+void XyzMenu::collapse() {
+    m_collapsed = !m_collapsed;
+    if (m_arrow) m_arrow->runAction(CCEaseExponentialOut::create(CCRotateTo::create(.22f, m_collapsed ? -90.f : 0.f)));
+    this->drawPanel();
+    m_scroll->setVisible(!m_collapsed);
+    m_scroll->setTouchEnabled(!m_collapsed);
+    m_side->setVisible(!m_collapsed);
+}
+
 void XyzMenu::defer(std::function<void()> f) {
     Ref<XyzMenu> self = this;
     queueInMainThread([self, f] { if (s_open == self.data()) f(); });
@@ -370,9 +444,14 @@ void XyzMenu::themeFull() { this->themeLive(); this->rebuild(false); }
 
 bool XyzMenu::init() {
     auto ws = CCDirector::get()->getWinSize();
+    m_paper = paper();
+    m_tab = std::clamp(s_startTab, 0, 7);
+    s_startTab = 0;
     m_w = std::min(ws.width - 30.f, 470.f);
     m_h = std::min(ws.height - 24.f, 280.f);
-    m_glass = glass::create({m_w, m_h}, 16.f);
+    m_cw = m_paper ? m_w - 20.f : m_w - SW - 30.f;
+    m_ch = m_paper ? m_h - 34.f - 30.f - 8.f : m_h - 52.f;
+    m_glass = m_paper ? nullptr : glass::create({m_w, m_h}, 16.f);
     m_noElasticity = true;
     if (!Popup::init(m_w, m_h)) return false;
     if (m_bgSprite) m_bgSprite->setVisible(false);
@@ -383,6 +462,10 @@ bool XyzMenu::init() {
         m_glass->setPosition(ws / 2);
         glass::setAlpha(m_glass, 0.f);
         glass::setTheme(m_glass, to3(acc()), tint3());
+    } else if (m_paper) {
+        m_panel = CCDrawNode::create();
+        m_mainLayer->addChild(m_panel, -1);
+        this->drawPanel();
     } else {
         auto d = CCDrawNode::create();
         auto t = tint3();
@@ -394,9 +477,8 @@ bool XyzMenu::init() {
     m_mainLayer->addChild(m_head, 5);
     this->buildHead();
 
-    float cw = m_w - SW - 30.f, ch = m_h - 52.f;
-    m_scroll = ScrollLayer::create({cw, ch});
-    m_scroll->setPosition({SW + 20.f, 12.f});
+    m_scroll = ScrollLayer::create({m_cw, m_ch});
+    m_scroll->setPosition(m_paper ? CCPoint{10.f, 8.f} : CCPoint{SW + 20.f, 12.f});
     m_mainLayer->addChild(m_scroll);
 
     m_side = CCNode::create();
@@ -411,11 +493,36 @@ bool XyzMenu::init() {
     m_mainLayer->runAction(CCEaseExponentialOut::create(CCScaleTo::create(.26f, 1.f)));
     m_mainLayer->runAction(CCEaseExponentialOut::create(CCMoveBy::create(.26f, {0, 10.f})));
     this->schedule(schedule_selector(XyzMenu::fadeStep));
+    this->schedule(schedule_selector(XyzMenu::pollUpdate), 0.4f);
     return true;
 }
 
 void XyzMenu::buildHead() {
     m_head->removeAllChildren();
+    if (m_paper) {
+        m_arrow = nullptr;
+        auto title = mkLabel(fmt::format("xyzBot v{}", Mod::get()->getVersion().toVString().substr(1)).c_str());
+        sc(title, .42f); title->setPosition({m_w / 2, m_h - 17}); title->setOpacity(210);
+        m_head->addChild(title);
+        auto top = CCMenu::create();
+        top->setPosition({0, 0});
+        m_head->addChild(top);
+        auto an = CCNode::create();
+        an->setContentSize({22, 22});
+        auto tri = CCDrawNode::create();
+        poly(tri, {{-5.f, 3.5f}, {5.f, 3.5f}, {0.f, -4.f}}, pGray(0.85f));
+        tri->setPosition({11, 11});
+        tri->setRotation(m_collapsed ? -90.f : 0.f);
+        an->addChild(tri);
+        m_arrow = tri;
+        auto ab = CCMenuItemExt::createSpriteExtra(an, [this](auto) { this->collapse(); });
+        ab->setPosition({20, m_h - 17});
+        top->addChild(ab);
+        auto x = makeRound("x", [this] { this->onClose(nullptr); });
+        x->setPosition({m_w - 20, m_h - 17});
+        top->addChild(x);
+        return;
+    }
     auto title = mkLabel("xyzBot");
     sc(title, .5f); title->setAnchorPoint({0, .5f}); title->setPosition({18, m_h - 20});
     m_head->addChild(title);
@@ -443,6 +550,13 @@ void XyzMenu::fadeStep(float dt) {
     if (!m_closing && m_fade >= 1.f) this->unschedule(schedule_selector(XyzMenu::fadeStep));
 }
 
+void XyzMenu::pollUpdate(float) {
+    int st = (int)updater::state();
+    if (st == m_updSeen) return;
+    m_updSeen = st;
+    if (m_sub == "update" || (m_tab == 0 && m_sub.empty())) this->later(true);
+}
+
 void XyzMenu::onClose(CCObject*) {
     if (m_closing) return;
     m_closing = true;
@@ -462,6 +576,18 @@ static float tabPitch(float menuH) { return std::min(29.f, (menuH - 52.f - 8.f) 
 
 void XyzMenu::moveHl(bool animate) {
     if (!m_hl) return;
+    if (m_paper && m_tab < (int)m_tabX.size()) {
+        CCPoint p = {m_tabX[m_tab], m_h - 34.f - 26.f};
+        float sx = m_tabW[m_tab] / 100.f;
+        m_hl->stopAllActions();
+        if (animate) m_hl->runAction(CCSpawn::create(CCEaseExponentialOut::create(CCMoveTo::create(.28f, p)), CCEaseExponentialOut::create(CCScaleTo::create(.28f, sx, 1.f)), nullptr));
+        else { m_hl->setPosition(p); m_hl->setScaleX(sx); }
+        for (int i = 0; i < (int)m_tabLabels.size(); ++i) {
+            m_tabLabels[i]->stopAllActions();
+            m_tabLabels[i]->runAction(CCFadeTo::create(.15f, i == m_tab ? 255 : 175));
+        }
+        return;
+    }
     float h2 = m_h - 52.f;
     CCPoint p = {16.f, 12.f + h2 - 6.f - 26.f - m_tab * tabPitch(m_h)};
     m_hl->stopAllActions();
@@ -476,6 +602,50 @@ void XyzMenu::moveHl(bool animate) {
 void XyzMenu::buildSide() {
     m_side->removeAllChildren();
     m_tabLabels.clear();
+    if (m_paper) {
+        m_tabX.clear(); m_tabW.clear();
+        float s = .36f, avail = m_w - 20.f - (NTABS - 1) * 3.f, tot = 0.f;
+        auto measure = [&](float sc0) {
+            tot = 0.f;
+            for (int i = 0; i < NTABS; ++i) {
+                auto l = mkLabel(TABS[i]);
+                sc(l, sc0);
+                tot += l->getScaledContentSize().width + 16.f;
+            }
+        };
+        measure(s);
+        while (tot > avail && s > .2f) { s -= .01f; measure(s); }
+        auto hl = CCDrawNode::create();
+        rrect(hl, {0, 0}, {100, 22}, 3, acc(1.f, 0.6f), 1.f, accL(0.85f));
+        m_side->addChild(hl);
+        m_hl = hl;
+        auto menu = CCMenu::create();
+        menu->setPosition({0, 0});
+        m_side->addChild(menu, 2);
+        float x = 10.f, y = m_h - 34.f - 15.f;
+        for (int i = 0; i < NTABS; ++i) {
+            auto l = mkLabel(TABS[i]);
+            sc(l, s);
+            float w = l->getScaledContentSize().width + 16.f;
+            auto node = CCNode::create();
+            node->setContentSize({w, 22});
+            l->setPosition({w / 2, 11});
+            node->addChild(l);
+            m_tabLabels.push_back(l);
+            m_tabX.push_back(x); m_tabW.push_back(w);
+            auto b = CCMenuItemExt::createSpriteExtra(node, [this, i](auto) {
+                if (m_tab == i && m_sub.empty()) return;
+                m_tab = i; m_sel = -1; m_sub.clear();
+                this->moveHl(true);
+                this->later(true);
+            });
+            b->setPosition({x + w / 2, y});
+            menu->addChild(b);
+            x += w + 3.f;
+        }
+        this->moveHl(false);
+        return;
+    }
     float h2 = m_h - 52.f;
     auto d = CCDrawNode::create();
     rrect(d, {10, 12}, {SW, h2}, 12, ccc4f(1, 1, 1, 0.05f), 1.f, ccc4f(1, 1, 1, 0.12f));
@@ -566,6 +736,20 @@ void XyzMenu::rebuild(bool animate) {
             tog("Skip Visibility On Sub-Ticks", c.skipVis, [](bool v) { cfg().skipVis = v; saveCfg(); });
             sec("PROFILER");
             tog("Profiler", c.profiler, [](bool v) { cfg().profiler = v; rt().prof = Prof{}; saveCfg(); });
+        } else if (sub == "update") {
+            auto st = updater::state();
+            sec("UPDATE " + updater::latest());
+            txt(updater::message());
+            if (st == updater::State::Available || st == updater::State::Failed) {
+                std::vector<std::pair<std::string, std::function<void()>>> p;
+                if (st == updater::State::Available) p.push_back({"Download", [this] { updater::download(); this->later(true); }});
+                p.push_back({"Open Releases", [] { geode::utils::web::openLinkInBrowser(updater::releasesUrl()); }});
+                pills(std::move(p));
+            } else if (st == updater::State::Done) {
+                pills({{"Restart Game", [] { updater::restart(); }}});
+            }
+            sec("CHANGELOG");
+            for (auto const& l : updater::notes()) txt(l);
         } else if (sub == "speed") {
             sec("SPEEDHACK SETTINGS");
             num("Speed", [] { return fmt::format("{:.2f}", cfg().speedVal); }, [](int d) { cfg().speedVal = std::clamp(cfg().speedVal + d * 0.1f, 0.05f, 100.f); saveCfg(); });
@@ -707,6 +891,17 @@ void XyzMenu::rebuild(bool animate) {
         sec("AUTOMATION");
         tog("Autosave While Recording", c.autosave, [](bool v) { cfg().autosave = v; saveCfg(); }, "autosave");
         tog("Auto Exit On Finish", c.autoExit, [](bool v) { cfg().autoExit = v; saveCfg(); });
+        sec("UPDATES");
+        {
+            auto st = updater::state();
+            txt(st == updater::State::Idle ? std::string("Not checked yet.") : updater::message());
+            std::vector<std::pair<std::string, std::function<void()>>> p;
+            p.push_back({"Check Now", [this] { updater::check(true); this->later(false); }});
+            if (st == updater::State::Available) p.push_back({"Changelog & Download", [this] { m_sub = "update"; this->later(true); }});
+            if (st == updater::State::Done) p.push_back({"Restart Game", [] { updater::restart(); }});
+            pills(std::move(p));
+        }
+        tog("Check For Updates On Start", c.autoUpdate, [](bool v) { cfg().autoUpdate = v; saveCfg(); });
         break;
     }
     case 1:
@@ -900,8 +1095,12 @@ void XyzMenu::rebuild(bool animate) {
     default: {
         sec("INTERFACE");
         tog("Button In Levels", c.btnInLevel, [](bool v) { cfg().btnInLevel = v; saveCfg(); });
-        num("Menu Font", [] { return std::string(cfg().menuFont ? "Arial (new)" : "GD (old)"); }, [this](int) {
-            cfg().menuFont = 1 - cfg().menuFont; saveCfg();
+        num("UI Style", [] { return std::string(cfg().uiStyle ? "Paper" : "Glass"); }, [this](int) {
+            cfg().uiStyle = 1 - cfg().uiStyle; saveCfg();
+            this->restyle(); });
+        num("Menu Font", [] { return std::string(menuFontNow() ? "Arial (new)" : "GD (old)"); }, [this](int) {
+            auto& f = cfg().uiStyle ? cfg().fontPaper : cfg().fontGlass;
+            f = 1 - f; saveCfg();
             this->defer([this] { this->applyFont(); }); });
         sec("PRESETS");
         custom([this](CCMenu* menu, float y, float w) {
@@ -931,45 +1130,80 @@ void XyzMenu::rebuild(bool animate) {
     }
     }
 
-    float cw = m_w - SW - 30.f, ch = m_h - 52.f;
+    if (m_paper) {
+        std::vector<Row> keep;
+        bool closed = false;
+        for (auto& rw : rows) {
+            if (rw.k == Row::Section) {
+                auto key = fmt::format("{}:{}:{}", m_tab, m_sub, rw.label);
+                closed = closedSecs().count(key) > 0;
+                rw.on = closed; rw.help = key;
+                keep.push_back(std::move(rw));
+            } else if (!closed) keep.push_back(std::move(rw));
+        }
+        rows = std::move(keep);
+    }
+    float cw = m_cw, ch = m_ch;
+    float rowH = m_paper ? 26.f : ROW, secH = m_paper ? 24.f : 22.f;
     float total = 8.f;
-    for (auto& rw : rows) total += (rw.k == Row::Section ? 22.f : ROW + 2.f);
+    for (auto& rw : rows) total += (rw.k == Row::Section ? secH : rowH + 2.f);
     total = std::max(total + 6.f, ch);
     content->setContentSize({cw, total});
 
     float y = total - 4.f;
     int idx = 0;
     for (auto& rw : rows) {
-        float h = rw.k == Row::Section ? 22.f : ROW + 2.f;
+        float h = rw.k == Row::Section ? secH : rowH + 2.f;
         float cy = y - h / 2.f;
         auto rm = CCMenu::create();
         rm->setPosition({0, cy});
         rm->setContentSize({cw, h});
         content->addChild(rm);
 
-        if (rw.k == Row::Section) {
+        if (rw.k == Row::Section && m_paper) {
+            auto node = CCNode::create();
+            node->setContentSize({cw, secH});
+            auto tri = CCDrawNode::create();
+            poly(tri, {{-4.f, 3.2f}, {4.f, 3.2f}, {0.f, -3.6f}}, pGray(0.85f));
+            tri->setPosition({14, secH / 2});
+            tri->setRotation(rw.on ? -90.f : 0.f);
+            node->addChild(tri);
+            auto l = mkLabel(rw.label.c_str());
+            sc(l, .36f); l->setAnchorPoint({0, .5f}); l->setPosition({28, secH / 2});
+            node->addChild(l);
+            auto key = rw.help;
+            auto it = CCMenuItemExt::createSpriteExtra(node, [this, key](auto) {
+                auto& s = closedSecs();
+                if (!s.erase(key)) s.insert(key);
+                this->later(false);
+            });
+            it->setPosition({cw / 2, 0});
+            rm->addChild(it);
+        } else if (rw.k == Row::Section) {
             auto l = mkLabel(rw.label.c_str());
             sc(l, .33f); l->setColor(to3(accL())); l->setAnchorPoint({0, .5f}); l->setPosition({8, -2});
             rm->addChild(l);
         } else {
             auto bg = CCDrawNode::create();
-            rrect(bg, {0, -ROW / 2.f}, {cw, ROW}, 9, ccc4f(1, 1, 1, 0.055f), 1.f, ccc4f(1, 1, 1, 0.10f));
+            if (m_paper) bg->drawSegment({0, -rowH / 2.f}, {cw, -rowH / 2.f}, 0.5f, pm(ccc4f(1, 1, 1, 0.07f)));
+            else rrect(bg, {0, -ROW / 2.f}, {cw, ROW}, 9, ccc4f(1, 1, 1, 0.055f), 1.f, ccc4f(1, 1, 1, 0.10f));
             rm->addChild(bg, -1);
             switch (rw.k) {
             case Row::Toggle: {
                 auto l = mkLabel(rw.label.c_str());
-                fit(l, cw - (rw.gear.empty() ? 120.f : 150.f), .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
+                float lx = m_paper ? 38.f : 12.f;
+                fit(l, cw - (rw.gear.empty() ? 120.f : 150.f), .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({lx, 0});
                 rm->addChild(l);
                 if (!rw.help.empty()) {
                     auto hb = makeHelp(rw.label, rw.help);
-                    hb->setPosition({12.f + l->getScaledContentSize().width + 13.f, 0}); rm->addChild(hb);
+                    hb->setPosition({lx + l->getScaledContentSize().width + (m_paper ? 16.f : 13.f), 0}); rm->addChild(hb);
                 }
                 auto sw = makeSwitch(rw.on, rw.setb);
-                sw->setPosition({cw - 32, 0}); rm->addChild(sw);
+                sw->setPosition({m_paper ? 22.f : cw - 32, 0}); rm->addChild(sw);
                 if (!rw.gear.empty()) {
                     auto key = rw.gear;
                     auto g = makeGear([this, key] { m_sub = key; this->later(true); });
-                    g->setPosition({cw - 76, 0}); rm->addChild(g);
+                    g->setPosition({m_paper ? cw - 20.f : cw - 76, 0}); rm->addChild(g);
                 }
                 break;
             }
@@ -993,7 +1227,8 @@ void XyzMenu::rebuild(bool animate) {
                     auto box = CCNode::create();
                     box->setContentSize({74, 20});
                     auto bd = CCDrawNode::create();
-                    rrect(bd, {0, 0}, {74, 20}, 7, ccc4f(1, 1, 1, 0.07f), 1.f, ccc4f(1, 1, 1, 0.28f));
+                    if (m_paper) rrect(bd, {0, 0}, {74, 20}, 3, pGray(0.15f), 1.f, pGray(0.38f));
+                    else rrect(bd, {0, 0}, {74, 20}, 7, ccc4f(1, 1, 1, 0.07f), 1.f, ccc4f(1, 1, 1, 0.28f));
                     box->addChild(bd);
                     auto title = rw.label; auto setv = rw.setv;
                     auto bi = CCMenuItemExt::createSpriteExtra(box, [title, get, setv, fix](auto) {

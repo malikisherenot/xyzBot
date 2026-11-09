@@ -19,7 +19,7 @@ inline cocos2d::CCLabelBMFont* mkLabelStyle(char const* text, int style) {
     }
     return cocos2d::CCLabelBMFont::create(text, "bigFont.fnt");
 }
-inline cocos2d::CCLabelBMFont* mkLabel(char const* text) { return mkLabelStyle(text, xyz::cfg().menuFont); }
+inline cocos2d::CCLabelBMFont* mkLabel(char const* text) { return mkLabelStyle(text, xyz::menuFontNow()); }
 
 inline float fontK() {
     static float k = 0.f;

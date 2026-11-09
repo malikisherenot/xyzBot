@@ -44,7 +44,7 @@ public:
         sc(lbl, .34f);
         m_body->addChild(lbl, 2);
         m_lbl = lbl;
-        m_lastFont = xyz::cfg().menuFont;
+        m_lastFont = xyz::menuFontNow();
 
         this->redraw();
         m_halo->runAction(CCRepeatForever::create(CCSequence::create(
@@ -95,9 +95,9 @@ public:
         bool on = Mod::get()->getSettingValue<bool>("floating-button") && (c.btnInLevel || !inLevel);
         this->setVisible(on);
         if (!on) return;
-        if (m_lbl && c.menuFont != m_lastFont) {
-            m_lastFont = c.menuFont;
-            setStyle(m_lbl, c.menuFont);
+        if (m_lbl && xyz::menuFontNow() != m_lastFont) {
+            m_lastFont = xyz::menuFontNow();
+            setStyle(m_lbl, xyz::menuFontNow());
             sc(m_lbl, .34f);
         }
         if (c.accR != m_drawnR || c.accG != m_drawnG || c.accB != m_drawnB) this->redraw();

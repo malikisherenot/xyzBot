@@ -83,9 +83,9 @@ public:
         bool show = shouldShow();
         this->setVisible(show);
         if (!show) { m_held = -1; return; }
-        if (c.menuFont != m_lastFont) {
-            m_lastFont = c.menuFont;
-            for (auto l : m_lbl) setStyle(l, c.menuFont);
+        if (xyz::menuFontNow() != m_lastFont) {
+            m_lastFont = xyz::menuFontNow();
+            for (auto l : m_lbl) setStyle(l, xyz::menuFontNow());
             m_drawnHeld = -2;
         }
         if (c.stepN != m_lastN) {
