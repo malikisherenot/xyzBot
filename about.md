@@ -12,3 +12,5 @@
 - Prevent Death, Maintain Gravity, Mirror Inputs, No Mirror Portals
 - Autoclicker (per player), CPS counter
 - Autosave, Auto Exit, Block Inputs
+- Auto updater
+- Two UI styles: Glass and Paper

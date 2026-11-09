@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.17.0
+- Added the auto updater (shows the changelog, then downloads in-game)
+- Added the Paper UI style (switch it in the Theme tab)
+- The menu font is saved per style (GD for Glass, Arial for Paper)
+
 ## v1.16.1
 - Fixed the button not opening again after a transition
 - Fixed a crash with the trajectory in the editor playtest
