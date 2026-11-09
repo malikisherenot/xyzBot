@@ -6,7 +6,7 @@
 
 <p align="center">
   A maximalist <a href="https://geode-sdk.org">Geode</a> bot for Geometry Dash <b>2.2081</b>:<br>
-  tick-accurate record and replay, high TPS, wide macro compatibility and a full visual toolkit.
+  "All-in-one" bot with wide macro compatibility and a lot of assist tools to make botting easier.
 </p>
 
 ---
