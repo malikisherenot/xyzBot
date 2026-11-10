@@ -186,6 +186,7 @@ static bool alignPlayback() {
 
 static void rewind() {
     auto& r = rt();
+    backstepClear();
     r.tick = 0; r.nextIn = 0; r.nextFix = 0; r.held.fill(false); r.leftover = 0;
     r.gameHeld = {false, false}; r.acHeld = {false, false}; r.ac[0] = Ac{}; r.ac[1] = Ac{};
     r.cpsT[0].clear(); r.cpsT[1].clear(); r.maxCps[0] = r.maxCps[1] = 0;
@@ -322,6 +323,7 @@ class $modify(XyzGL, GJBaseGameLayer) {
         auto& r = rt(); auto& c = cfg();
         if (!isActive(this) || r.simulating) { GJBaseGameLayer::handleButton(down, button, p1); return; }
         bool ext = !r.internal && !r.feeding && !r.resetting;
+        if (ext && c.stepper && !r.bsReplay) backstepLog(r.tick, button, down, p1);
         if (ext && c.swapInput) p1 = !p1;
         bool p2 = !p1;
         if (r.mode == Mode::Play && ext && c.takeOver && button >= 1 && button <= 3 && down) takeOver();
@@ -383,7 +385,7 @@ class $modify(XyzPL, PlayLayer) {
         PlayLayer::resetLevel();
         r.resetting = false;
         if (!r.loadedCp) rewind();
-        flipOnReset();
+        if (!r.bsLoad) flipOnReset();
     }
 
     void resetLevelFromStart() {
@@ -398,7 +400,7 @@ class $modify(XyzPL, PlayLayer) {
     CheckpointObject* createCheckpoint() {
         auto cp = PlayLayer::createCheckpoint();
         auto& r = rt();
-        if (cp) m_fields->cps[cp] = {r.tick, r.nextIn, r.nextFix, r.held, GameToolbox::getfast_srand()};
+        if (cp && !r.bsSaving) m_fields->cps[cp] = {r.tick, r.nextIn, r.nextFix, r.held, GameToolbox::getfast_srand()};
         r.cpCount = m_fields->cps.size();
         return cp;
     }
@@ -410,6 +412,7 @@ class $modify(XyzPL, PlayLayer) {
 
     void loadFromCheckpoint(CheckpointObject* cp) {
         auto& r = rt();
+        if (r.bsLoad) { PlayLayer::loadFromCheckpoint(cp); r.loadedCp = true; return; }
         auto it = m_fields->cps.find(cp);
         if (r.mode == Mode::Off || it == m_fields->cps.end()) { PlayLayer::loadFromCheckpoint(cp); return; }
         auto s = it->second;
