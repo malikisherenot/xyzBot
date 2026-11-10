@@ -1,7 +1,7 @@
 # Changelog
 
-## v1.17.0
-- Added the auto updater (shows the changelog, then downloads in-game)
+## v1.17.0-beta1
+- Added auto updater (shows the changelog, then downloads in-game)
 - Added the Paper UI style (switch it in the Theme tab)
 - The menu font is saved per style (GD for Glass, Arial for Paper)
 - Back-stepping
