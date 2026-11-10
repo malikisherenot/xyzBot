@@ -68,7 +68,10 @@ void finish(Macro& m) {
 
 bool importEchoJson(Macro& m, json const& j);
 
+bool importGdr2(Macro& m, std::vector<uint8_t> const& d);
+
 bool importGdr(Macro& m, std::vector<uint8_t> const& data) {
+    if (data.size() > 3 && std::memcmp(data.data(), "GDR", 3) == 0) return importGdr2(m, data);
     json j = json::from_msgpack(data, true, false);
     if (j.is_discarded()) j = json::parse(data, nullptr, false);
     if (j.is_discarded() || !j.is_object() || !j.contains("inputs") || !j["inputs"].is_array()) { g_err = "Not a GDR macro"; return false; }
@@ -466,6 +469,93 @@ bool importEchoJson(Macro& m, json const& j) {
     return true;
 }
 
+// GDR2 (binary, maxnut's GDReplayFormat v2). Numbers are LEB128, floats and doubles are big endian.
+bool importGdr2(Macro& m, std::vector<uint8_t> const& d) {
+    Bytes in{d};
+    in.at = 3;
+    auto str = [&]() {
+        uint64_t n = in.leb();
+        if (in.fail || n > 0xFFFF || in.left() < n) { in.fail = true; return std::string(); }
+        std::string s((char const*)&d[in.at], (size_t)n);
+        in.at += (size_t)n;
+        return s;
+    };
+    auto f32 = [&]() { uint32_t v = (uint32_t)in.u(4); v = __builtin_bswap32(v); float f; std::memcpy(&f, &v, 4); return f; };
+    auto f64 = [&]() { uint64_t v = in.u(8); v = __builtin_bswap64(v); double f; std::memcpy(&f, &v, 8); return f; };
+    in.leb();
+    std::string inputTag = str();
+    str(); str();
+    f32();
+    in.leb();
+    double fps = f64();
+    uint64_t seed = in.leb();
+    in.leb();
+    in.leb();
+    bool platformer = in.leb() != 0;
+    std::string bot = str();
+    in.leb();
+    uint64_t levelId = in.leb();
+    str();
+    uint64_t extSize = in.leb();
+    if (in.fail || extSize > in.left()) { g_err = "Corrupt GDR2 header"; return false; }
+    size_t extEnd = in.at + (size_t)extSize;
+
+    m = Macro{};
+    m.tps = (uint32_t)std::max(1L, std::lround(std::isfinite(fps) ? fps : 240.0));
+    m.seed = seed;
+    m.levelId = (int64_t)levelId;
+
+    if (bot == "xdBot") {
+        Bytes ex{d}; ex.at = in.at;
+        auto rd = [&]() { uint32_t v = (uint32_t)ex.u(4); v = __builtin_bswap32(v); float f; std::memcpy(&f, &v, 4); return f; };
+        uint64_t count = ex.leb();
+        for (uint64_t i = 0; i < count && !ex.fail && ex.at <= extEnd; ++i) {
+            uint64_t frame = ex.leb();
+            float x1 = rd(), y1 = rd(), r1 = rd(); bool rot1 = ex.leb() != 0;
+            float x2 = rd(), y2 = rd(), r2 = rd(); bool rot2 = ex.leb() != 0;
+            if (ex.fail || frame > 0x7fffffffULL) break;
+            addFix(m, (int)frame, false, x1, y1, rot1 && r1 != 0.f ? r1 : NOVAL);
+            addFix(m, (int)frame, true, x2, y2, rot2 && r2 != 0.f ? r2 : NOVAL);
+        }
+    }
+    in.at = extEnd;
+
+    uint64_t deaths = in.leb();
+    for (uint64_t i = 0; i < deaths && !in.fail; ++i) in.leb();
+    in.leb();
+    uint64_t p1 = in.leb();
+    if (in.fail) { g_err = "Corrupt GDR2 header"; return false; }
+
+    bool hasExt = !inputTag.empty();
+    uint64_t prev = 0;
+    bool p2 = p1 == 0;
+    while (in.left() > 0 && !in.fail) {
+        uint64_t packed = in.leb();
+        uint64_t frame; int btn; bool down = packed & 1;
+        if (platformer) { frame = (packed >> 3) + prev; btn = (int)((packed >> 1) & 3); }
+        else { frame = (packed >> 1) + prev; btn = 1; }
+        if (hasExt) {
+            uint64_t sz = in.leb();
+            if (in.fail || sz > in.left()) { g_err = "Corrupt GDR2 input"; return false; }
+            if (inputTag == "Phys" && sz >= 28) {
+                Bytes ex{d}; ex.at = in.at;
+                auto rd = [&]() { uint32_t v = (uint32_t)ex.u(4); v = __builtin_bswap32(v); float f; std::memcpy(&f, &v, 4); return f; };
+                auto rdd = [&]() { uint64_t v = ex.u(8); v = __builtin_bswap64(v); double f; std::memcpy(&f, &v, 8); return f; };
+                float x = rd(), y = rd(), rot = rd(); rdd(); double yv = rdd();
+                if (frame >= 1 && frame < 0x7fffffffULL && (x != 0.f || y != 0.f)) m.fixes.push_back({(uint32_t)(frame - 1), p2, x, y, rot, (float)yv});
+            }
+            in.at += (size_t)sz;
+        }
+        if (btn >= 1 && btn <= 3 && frame < 0x7fffffffULL) m.inputs.push_back({(uint32_t)frame, (uint8_t)btn, down, p2});
+        prev = frame;
+        if (p1 > 0 && --p1 == 0) { prev = 0; p2 = true; }
+    }
+    if (in.fail) { g_err = "Truncated GDR2 macro"; return false; }
+    finish(m);
+    if (m.inputs.empty()) { g_err = "Macro has no inputs"; return false; }
+    return true;
+}
+
 bool importEchoPlain(Macro& m, std::string const& s) {
     std::istringstream in(s);
     float fps = 0.f;
@@ -530,7 +620,7 @@ bool importMacro(Macro& m, std::filesystem::path const& file) {
         if (endsWith(n, ".slc")) return importSlc(m, data);
         if (endsWith(n, ".tcm")) return importTcbot(m, data) || (g_err = g_err.empty() ? "Not a TCBot macro" : g_err, false);
         if (endsWith(n, ".echo") && !endsWith(n, ".echo.json")) return importLegacyEcho(m, data);
-        if (endsWith(n, ".gdr2")) { g_err = ".gdr2 is binary and needs the GDR library: in xdBot save as .gdr or .gdr.json instead"; return false; }
+        if (endsWith(n, ".gdr2")) return importGdr2(m, data);
         if (endsWith(n, ".gdr") || endsWith(n, ".json")) return importGdr(m, data);
         if (endsWith(n, ".txt") || endsWith(n, ".csv")) return importText(m, std::string(data.begin(), data.end()));
     } catch (std::exception const& e) {
