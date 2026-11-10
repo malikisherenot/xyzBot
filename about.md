@@ -1,8 +1,8 @@
 # xyzBot
 
 - Accurate record and replay (Vanilla, Input Fixes, Frame Fixes)
-- Imports xdBot, Silicate, TCBot, Echo and GDR macros, with macro search
-- High TPS, speedhack, frame stepper, noclip
+- Imports xdBot, Silicate, TCBot, Echo and GDR/GDR2 macros, with macro search
+- TPS, speedhack, frame stepper (including back-stepping), noclip
 - Hitboxes, hitbox trail, trajectory, wave drag fix
 - Trajectory Autoclicker
 - Rendering, with Render Speed and Render Time labels
