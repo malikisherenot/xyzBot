@@ -32,6 +32,7 @@ jobs:
           target: ${{ matrix.config.target }}
 
   package:
+    if: ${{ always() }}
     needs: build
     runs-on: ubuntu-latest
     steps:
