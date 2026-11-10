@@ -37,14 +37,14 @@ Use the **Import** button on the Macros tab. Imported macros are converted to th
 | Format | Extension | Notes |
 | --- | --- | --- |
 | xyzBot | `.xyz` | Native format, the only save format |
-| GDR1 | `.gdr`, `.gdr.json`, `.json` | msgpack or JSON. xdBot macros keep their frame fixes |
+| GDR1/GDR2 | `.gdr`, `.gdr.json`, `.json` | msgpack or JSON. xdBot macros keep their frame fixes |
 | xdBot legacy | `.xd` | Inputs and position fixes |
 | Silicate | `.slc` | v1, v2 and v3 |
 | TCBot | `.tcm` | v1 and v2 |
 | Echo | `.echo`, `.echo.json`, `.txt` | Old binary, JSON (current and old) and plain text |
 | Text | `.txt`, `.csv` | `tick button down [p2]` lines, optional `tps=240` line |
 
-Not supported yet: `.gdr2` and Echo's new compressed `.echo`. In those programs, export as `.gdr`, `.gdr.json` or `.echo.json` instead.
+Not supported yet: Echo's new compressed `.echo`. In those programs, export as `.gdr`, `.gdr.json` or `.echo.json` instead.
 
 Silicate and TCBot macros that change TPS mid-run are imported at their starting TPS.
 
