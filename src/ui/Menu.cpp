@@ -153,9 +153,9 @@ static CCMenuItemSpriteExtra* makeChip(ccColor3B col, bool sel, std::function<vo
 
 static std::string helpText(std::string const& k) {
     static std::map<std::string, std::string> const H = {
-        {"Frame Stepper", "Freezes the game and only advances when you step. On touch devices use the on-screen controls, on desktop press F7."},
-        {"On-Screen Controls", "Shows Step, +N, Hold and Run buttons at the bottom of the screen while the stepper is on."},
-        {"Steps Per +N Button", "How many ticks the +N button advances at once."},
+        {"Frame Stepper", "Freezes the game and only advances when you step. On touch devices use the on-screen controls, on desktop press F7 (step) or F9 (back)."},
+        {"On-Screen Controls", "Shows Back, -N, Step, +N, Hold and Run buttons at the bottom right of the screen while the stepper is on."},
+        {"Steps Per +N Button", "How many ticks the +N and -N buttons move at once."},
         {"Hold Speed (ticks/frame)", "How many ticks the Hold button advances every frame while you keep it pressed."},
         {"Noclip", "Stops the player from dying."},
         {"Frame Fixes", "Records the player's position, rotation and Y velocity every tick so macros stay accurate. Makes macro files larger."},
@@ -869,7 +869,7 @@ void XyzMenu::rebuild(bool animate) {
         std::string st = r.mode == Mode::Record ? "Recording" : r.mode == Mode::Play ? "Playing" : "Idle";
         sec("BOT");
         txt("State: " + st);
-        pills({{"Record", [this] { startRecord(); this->later(false); }}, {"Stop", [this] { stopAll(true); this->later(false); }}, {"Step", [] { stepOnce(); }},
+        pills({{"Record", [this] { startRecord(); this->later(false); }}, {"Stop", [this] { stopAll(true); this->later(false); }}, {"Back", [] { stepBack(1); }}, {"Step", [] { stepOnce(); }},
                {"Take Over", [this] {
                     if (takeOverNow()) this->onClose(nullptr);
                     else Notification::create("Nothing is playing", NotificationIcon::Error)->show(); }}});
@@ -1286,6 +1286,7 @@ class $modify(XyzKeys, CCKeyboardDispatcher) {
         if (down && !repeat) {
             if (key == KEY_F6) { XyzMenu::toggle(); return true; }
             if (key == KEY_F7 && PlayLayer::get()) { stepOnce(); return true; }
+            if (key == KEY_F9 && PlayLayer::get()) { stepBack(1); return true; }
             if (key == KEY_F8) { takeOverNow(); return true; }
         }
         return CCKeyboardDispatcher::dispatchKeyboardMSG(key, down, repeat, ts);
