@@ -14,14 +14,14 @@ namespace xyz {
 namespace {
 struct Used { EnhancedGameObject* o; bool p1, p2; };
 struct Save {
-    CheckpointObject* cp;
-    uint32_t tick;
-    size_t nextIn, nextFix;
+    CheckpointObject* cp = nullptr;
+    uint32_t tick = 0;
+    size_t nextIn = 0, nextFix = 0;
     std::array<bool, 6> held, uheld;
-    uint64_t seed;
+    uint64_t seed = 0;
     gd::unordered_map<int, int> items;
     gd::vector<GameObject*> calc;
-    int calcSize;
+    int calcSize = 0;
     std::vector<Used> used;
 };
 struct In { uint32_t tick; uint8_t button; bool down, p1; };
@@ -110,7 +110,10 @@ void backstepSave(GJBaseGameLayer* gl, int batch) {
     r.bsSaving = false;
     if (!cp) return;
     cp->retain();
-    Save s{cp, r.tick, r.nextIn, r.nextFix, r.held, s_uheld, GameToolbox::getfast_srand(), {}, {}, 0, {}};
+    Save s;
+    s.cp = cp; s.tick = r.tick; s.nextIn = r.nextIn; s.nextFix = r.nextFix;
+    s.held = r.held; s.uheld = s_uheld; s.seed = GameToolbox::getfast_srand();
+    s.calcSize = 0;
     if (pl->m_effectManager) s.items = pl->m_effectManager->m_persistentItemCountMap;
     s.calc = pl->m_calcNonEffectObjects;
     s.calcSize = pl->m_calcNonEffectObjectsSize;
