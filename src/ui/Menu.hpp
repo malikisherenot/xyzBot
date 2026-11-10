@@ -10,7 +10,13 @@ class XyzMenu : public geode::Popup {
     std::string m_sub;
     std::string m_mergeBase;
     std::string m_query;
-    float m_w = 0.f, m_h = 0.f;
+    int m_updSeen = -1;
+    void pollUpdate(float dt);
+    float m_w = 0.f, m_h = 0.f, m_cw = 0.f, m_ch = 0.f;
+    bool m_paper = false, m_collapsed = false;
+    cocos2d::CCDrawNode* m_panel = nullptr;
+    cocos2d::CCNode* m_arrow = nullptr;
+    std::vector<float> m_tabX, m_tabW;
     geode::ScrollLayer* m_scroll = nullptr;
     cocos2d::CCNode* m_side = nullptr;
     cocos2d::CCNode* m_glass = nullptr;
@@ -31,6 +37,9 @@ class XyzMenu : public geode::Popup {
     void themeFull();
     void fadeStep(float dt);
     void doClose(float dt);
+    void drawPanel();
+    void collapse();
+    void restyle();
 public:
     ~XyzMenu();
     static XyzMenu* create();

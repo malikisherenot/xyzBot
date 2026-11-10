@@ -9,6 +9,7 @@ using namespace geode::prelude;
 
 namespace xyz {
 void stepOnce() { rt().stepPending = std::min(rt().stepPending + 1, 2000); }
+void stepBack(int n) { rt().backReq = std::min(rt().backReq + std::max(n, 1), 100000); }
 static bool pdActive(GJBaseGameLayer* pl) {
     auto& c = cfg();
     return c.preventDeath && !c.noclip && rt().mode != Mode::Play && pl->m_player1 && !pl->m_player1->m_isDead;
@@ -48,11 +49,32 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
         double step = 1.0 / tps;
 
         if (c.stepper) {
+            if (r.backReq > 0) {
+                int back = r.backReq;
+                r.backReq = 0; r.stepPending = 0;
+                auto plp = typeinfo_cast<PlayLayer*>(pl);
+                uint32_t k = 0;
+                if (plp && xyz::backstepLoad(plp, back, k)) {
+                    r.bsReplay = true;
+                    for (uint32_t i = 0; i < k; ++i) {
+                        r.subTick = i + 1 < k;
+                        xyz::backstepFeed(pl, r.tick);
+                        XYZ_TIMED(P_UPD, GJBaseGameLayer::update((float)step));
+                    }
+                    r.subTick = false;
+                    xyz::backstepFeed(pl, r.tick);
+                    r.bsReplay = false;
+                    xyz::backstepFinish(plp);
+                    vis::refresh(pl);
+                }
+                return;
+            }
             if (r.stepPending <= 0) return;
             int n = std::min(r.stepPending, 600);
             r.stepPending -= n;
             for (int i = 0; i < n; ++i) {
                 r.subTick = i + 1 < n;
+                xyz::backstepSave(pl, n);
                 XYZ_TIMED(P_UPD, GJBaseGameLayer::update((float)step));
             }
             r.subTick = false;

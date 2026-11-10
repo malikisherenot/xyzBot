@@ -7,7 +7,7 @@ using namespace geode::prelude;
 using namespace xyz::draw;
 
 class XyzStepBar : public CCLayer {
-    static constexpr int N = 4;
+    static constexpr int N = 6;
     CCDrawNode* m_art = nullptr;
     CCLabelBMFont* m_lbl[N] = {};
     CCRect m_rect[N];
@@ -35,7 +35,7 @@ public:
         if (!CCLayer::init()) return false;
         m_art = CCDrawNode::create();
         this->addChild(m_art);
-        char const* names[N] = {"Step", "+10", "Hold", "Run"};
+        char const* names[N] = {"Back", "-10", "Step", "+10", "Hold", "Run"};
         for (int i = 0; i < N; ++i) {
             m_lbl[i] = mkLabel(names[i]);
             this->addChild(m_lbl[i], 2);
@@ -49,9 +49,9 @@ public:
 
     void layout() {
         auto ws = CCDirector::get()->getWinSize();
-        float bw = 54.f, bh = 28.f, gap = 6.f;
+        float bw = 48.f, bh = 28.f, gap = 5.f;
         float total = N * bw + (N - 1) * gap;
-        float x0 = (ws.width - total) / 2.f, y = 12.f;
+        float x0 = ws.width - total - 12.f, y = 12.f;
         for (int i = 0; i < N; ++i) {
             m_rect[i] = CCRect(x0 + i * (bw + gap), y, bw, bh);
             m_lbl[i]->setPosition({m_rect[i].getMidX(), m_rect[i].getMidY()});
@@ -68,7 +68,7 @@ public:
         for (int i = 0; i < N; ++i) {
             auto& r = m_rect[i];
             bool down = m_held == i;
-            bool accent = i == 3;
+            bool accent = i == N - 1;
             ccColor4F fill = accent ? ccColor4F{a.r * 0.75f, a.g * 0.75f, a.b * 0.75f, down ? 0.95f : 0.7f}
                                     : ccColor4F{0.04f, 0.07f, 0.1f, down ? 0.95f : 0.62f};
             ccColor4F border = down ? ccColor4F{a.r, a.g, a.b, 0.95f} : ccColor4F{1, 1, 1, 0.35f};
@@ -83,18 +83,19 @@ public:
         bool show = shouldShow();
         this->setVisible(show);
         if (!show) { m_held = -1; return; }
-        if (c.menuFont != m_lastFont) {
-            m_lastFont = c.menuFont;
-            for (auto l : m_lbl) setStyle(l, c.menuFont);
+        if (xyz::menuFontNow() != m_lastFont) {
+            m_lastFont = xyz::menuFontNow();
+            for (auto l : m_lbl) setStyle(l, xyz::menuFontNow());
             m_drawnHeld = -2;
         }
         if (c.stepN != m_lastN) {
             m_lastN = c.stepN;
-            m_lbl[1]->setString(fmt::format("+{}", c.stepN).c_str());
+            m_lbl[1]->setString(fmt::format("-{}", c.stepN).c_str());
+            m_lbl[3]->setString(fmt::format("+{}", c.stepN).c_str());
             m_drawnHeld = -2;
         }
         if (m_drawnHeld != m_held || m_accR != c.accR || m_accG != c.accG || m_accB != c.accB) this->redraw();
-        if (m_held == 2) for (int i = 0; i < std::clamp(c.holdRate, 1, 16); ++i) xyz::stepOnce();
+        if (m_held == 4) for (int i = 0; i < std::clamp(c.holdRate, 1, 16); ++i) xyz::stepOnce();
     }
 
     void registerWithTouchDispatcher() override {
@@ -108,9 +109,11 @@ public:
             if (!m_rect[i].containsPoint(p)) continue;
             m_held = i;
             auto& c = xyz::cfg();
-            if (i == 0) xyz::stepOnce();
-            else if (i == 1) for (int k = 0; k < std::clamp(c.stepN, 1, 240); ++k) xyz::stepOnce();
-            else if (i == 3) { c.stepper = false; m_held = -1; }
+            if (i == 0) xyz::stepBack(1);
+            else if (i == 1) xyz::stepBack(std::clamp(c.stepN, 1, 240));
+            else if (i == 2) xyz::stepOnce();
+            else if (i == 3) for (int k = 0; k < std::clamp(c.stepN, 1, 240); ++k) xyz::stepOnce();
+            else if (i == 5) { c.stepper = false; m_held = -1; }
             return true;
         }
         return false;

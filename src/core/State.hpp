@@ -45,6 +45,7 @@ struct Cfg {
     int pdLook = 2;
     bool trajAuto = false;
     bool profiler = false;
+    bool autoUpdate = true;
     int trajLook = 1;
     bool layout = false;
     bool speedAudio = true;
@@ -88,7 +89,7 @@ struct Cfg {
     bool stepBar = true;
     int stepN = 10;
     int holdRate = 1;
-    int menuFont = 1;
+    int uiStyle = 0, fontGlass = 0, fontPaper = 1;
     int themeIdx = 0;
     int accR = 0, accG = 217, accB = 153;
     int tintR = 13, tintG = 20, tintB = 28;
@@ -122,7 +123,8 @@ struct Rt {
     bool subTick = false;
     Prof prof;
     bool loadedCp = false;
-    int stepPending = 0;
+    int stepPending = 0, backReq = 0;
+    bool bsReplay = false, bsLoad = false, bsSaving = false;
     double leftover = 0.0;
     bool savedTps = false;
     float prevTpsVal = 240.f;
@@ -178,6 +180,7 @@ void cpsPush(bool p2);
 int cpsNow(int p);
 
 Cfg& cfg();
+inline int menuFontNow() { auto& c = cfg(); return c.uiStyle ? c.fontPaper : c.fontGlass; }
 Rt& rt();
 void loadCfg();
 void saveCfg();
@@ -215,4 +218,11 @@ bool startRecord();
 bool startPlay(std::string const& name);
 void stopAll(bool save);
 void stepOnce();
+void stepBack(int n);
+void backstepClear();
+void backstepLog(uint32_t tick, int button, bool down, bool p1);
+void backstepSave(GJBaseGameLayer* gl, int batch);
+bool backstepLoad(PlayLayer* pl, int n, uint32_t& k);
+void backstepFeed(GJBaseGameLayer* gl, uint32_t tick);
+void backstepFinish(PlayLayer* pl);
 }
