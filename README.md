@@ -9,11 +9,10 @@
   "All-in-one" bot with wide macro compatibility and a lot of assist tools to make botting easier.
 </p>
 
-<p align="center">
-
 [Join the discord server!](https://discord.gg/dMPZGScthA)
-</p>
 
+<p align="center">
+  
 ---
 
 ## Features
