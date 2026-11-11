@@ -21,7 +21,7 @@ constexpr char const* API = "https://api.github.com/repos/malikisherenot/xyzBot/
 
 State g_state = State::Idle;
 bool g_auto = false;
-std::string g_msg, g_latest, g_assetUrl, g_sumUrl;
+std::string g_msg, g_latest, g_assetUrl, g_sumUrl, g_digest;
 std::vector<std::string> g_notes;
 async::TaskHolder<web::WebResponse> g_check, g_dl, g_sum;
 std::vector<uint8_t> g_bytes;
@@ -134,7 +134,19 @@ void install() {
     g_msg = "Updated to " + g_latest + ". Restart the game to use it.";
 }
 
+bool isHex64(std::string const& s) {
+    if (s.size() != 64) return false;
+    for (char c : s) if (!std::isxdigit((unsigned char)c)) return false;
+    return true;
+}
+
 void verifyAndInstall() {
+    if (!g_digest.empty()) {
+        if (sha256Hex(g_bytes) != g_digest) { fail("The download does not match its checksum, nothing was installed"); return; }
+        install();
+        return;
+    }
+    if (g_sumUrl.empty()) { install(); return; }
     g_sum.spawn(req(20).get(g_sumUrl), [](web::WebResponse r) {
         if (!r.ok()) { fail("Could not download the checksum file"); return; }
         auto text = std::move(r).string().unwrapOrDefault();
@@ -166,12 +178,18 @@ void check(bool manual) {
         if (tag.empty()) { fail("GitHub sent an unexpected answer"); return; }
         g_latest = tag;
         g_notes = readNotes(json["body"].asString().unwrapOrDefault());
-        g_assetUrl.clear(); g_sumUrl.clear();
+        g_assetUrl.clear(); g_sumUrl.clear(); g_digest.clear();
         std::string asset;
         for (auto const& a : json["assets"]) {
             auto name = a["name"].asString().unwrapOrDefault();
             auto url = a["browser_download_url"].asString().unwrapOrDefault();
-            if (name.size() > 6 && name.compare(name.size() - 6, 6, ".geode") == 0) { g_assetUrl = url; asset = name; }
+            if (name.size() > 6 && name.compare(name.size() - 6, 6, ".geode") == 0) {
+                g_assetUrl = url; asset = name;
+                auto dg = a["digest"].asString().unwrapOrDefault();
+                if (dg.rfind("sha256:", 0) == 0) dg.erase(0, 7);
+                for (auto& ch : dg) ch = (char)std::tolower((unsigned char)ch);
+                g_digest = isHex64(dg) ? dg : std::string();
+            }
         }
         for (auto const& a : json["assets"]) {
             auto name = a["name"].asString().unwrapOrDefault();
@@ -181,14 +199,13 @@ void check(bool manual) {
         if (!(mine < theirs)) { g_state = State::UpToDate; g_msg = "You are up to date (" + Mod::get()->getVersion().toVString() + ")."; return; }
         g_state = State::Available;
         g_msg = "xyzBot " + tag + " is available.";
-        if (!manual && g_auto) Notification::create("xyzBot " + tag + " is available, see the xyzBot menu", NotificationIcon::Info)->show();
+        if (!manual && g_auto && cfg().updateNotify) Notification::create("New release " + tag + "!", NotificationIcon::Info, 4.f)->show();
     });
 }
 
 void download() {
     if (g_state != State::Available) return;
     if (g_assetUrl.empty()) { fail("This release has no .geode file. Use Open Releases."); return; }
-    if (g_sumUrl.empty()) { fail("This release has no checksum file, so it can't be verified. Use Open Releases."); return; }
     g_state = State::Downloading;
     g_msg = "Downloading " + g_latest + "...";
     g_dl.spawn(req(180).get(g_assetUrl), [](web::WebResponse r) {
@@ -202,10 +219,6 @@ void download() {
 
 void autoCheck() {
     if (!cfg().autoUpdate) return;
-    auto now = (int64_t)std::time(nullptr);
-    auto last = Mod::get()->getSavedValue<int64_t>("lastUpdateCheck", 0);
-    if (now - last < 86400) return;
-    Mod::get()->setSavedValue<int64_t>("lastUpdateCheck", now);
     g_auto = true;
     check(false);
 }
