@@ -855,7 +855,7 @@ void XyzMenu::rebuild(bool animate) {
             tog("Enabled", labels::cfg(i).on, [i](bool v) { labels::cfg(i).on = v; labels::save(i); });
             num("Anchor", [i] { static char const* a[] = {"Top Left", "Top Right", "Bottom Left", "Bottom Right"}; return std::string(a[std::clamp(labels::cfg(i).anchor, 0, 3)]); },
                 [i](int d) { auto& a = labels::cfg(i).anchor; a = (a + d + 4) % 4; labels::save(i); });
-            num("Font", [i] { return std::string(labels::cfg(i).font == 0 ? "GD Big" : "Arial"); }, [i](int) { auto& f = labels::cfg(i).font; f = 1 - f; labels::save(i); });
+            num("Font", [i] { return std::string(labels::cfg(i).font == 0 ? "GD Big" : labels::cfg(i).font == 2 ? "GD Small" : "Arial"); }, [i](int) { auto& f = labels::cfg(i).font; f = (f + 1) % 3; labels::save(i); });
             numS("Size", [i] { return fmt::format("{:.2f}", labels::cfg(i).scale); }, [i](int d) { auto& s = labels::cfg(i).scale; s = std::clamp(s + d * 0.05f, 0.1f, 2.f); labels::save(i); }, [i](double v) { labels::cfg(i).scale = std::clamp((float)v, 0.1f, 2.f); labels::save(i); });
             numS("Opacity", [i] { return fmt::format("{:.2f}", labels::cfg(i).opacity); }, [i](int d) { auto& o = labels::cfg(i).opacity; o = std::clamp(o + d * 0.1f, 0.1f, 1.f); labels::save(i); }, [i](double v) { labels::cfg(i).opacity = std::clamp((float)v, 0.1f, 1.f); labels::save(i); });
             sec("COLOR");
@@ -902,6 +902,7 @@ void XyzMenu::rebuild(bool animate) {
             pills(std::move(p));
         }
         tog("Check For Updates On Start", c.autoUpdate, [](bool v) { cfg().autoUpdate = v; saveCfg(); });
+        tog("New Release Notification", c.updateNotify, [](bool v) { cfg().updateNotify = v; saveCfg(); });
         break;
     }
     case 1:
@@ -1098,9 +1099,9 @@ void XyzMenu::rebuild(bool animate) {
         num("UI Style", [] { return std::string(cfg().uiStyle ? "Paper" : "Glass"); }, [this](int) {
             cfg().uiStyle = 1 - cfg().uiStyle; saveCfg();
             this->restyle(); });
-        num("Menu Font", [] { return std::string(menuFontNow() ? "Arial (new)" : "GD (old)"); }, [this](int) {
+        num("Menu Font", [] { return std::string(menuFontNow() == 2 ? "GD Small" : menuFontNow() ? "Arial (new)" : "GD (old)"); }, [this](int) {
             auto& f = cfg().uiStyle ? cfg().fontPaper : cfg().fontGlass;
-            f = 1 - f; saveCfg();
+            f = (f + 1) % 3; saveCfg();
             this->defer([this] { this->applyFont(); }); });
         sec("PRESETS");
         custom([this](CCMenu* menu, float y, float w) {

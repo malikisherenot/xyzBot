@@ -5,15 +5,20 @@
 #include <algorithm>
 
 namespace xyz::draw {
-constexpr int ARIAL_TAG = 0x5A7;
+constexpr int ARIAL_TAG = 0x5A7, CHAT_TAG = 0x5A8;
 inline bool& fontBad() { static bool b = false; return b; }
 inline std::string const& fontFile() {
     static std::string f = [] { using namespace geode::prelude; return std::string("arial-italic.fnt"_spr); }();
     return f;
 }
-inline std::string fontOf(int style) { return (style == 0 || fontBad()) ? std::string("bigFont.fnt") : fontFile(); }
+inline std::string fontOf(int style) {
+    if (style == 2) return "chatFont.fnt";
+    return (style != 1 || fontBad()) ? std::string("bigFont.fnt") : fontFile();
+}
 inline cocos2d::CCLabelBMFont* mkLabelStyle(char const* text, int style) {
-    if (style != 0 && !fontBad()) {
+    if (style == 2) {
+        if (auto l = cocos2d::CCLabelBMFont::create(text, "chatFont.fnt")) { l->setTag(CHAT_TAG); return l; }
+    } else if (style != 0 && !fontBad()) {
         if (auto l = cocos2d::CCLabelBMFont::create(text, fontFile().c_str())) { l->setTag(ARIAL_TAG); return l; }
         fontBad() = true;
     }
@@ -32,7 +37,22 @@ inline float fontK() {
     k = (ha > 0.f && hb > 0.f) ? std::clamp(hb / ha * 1.25f, 0.5f, 8.f) : 1.f;
     return k;
 }
-inline float kOf(cocos2d::CCLabelBMFont* l) { return l && l->getTag() == ARIAL_TAG ? fontK() : 1.f; }
+inline float fontKChat() {
+    static float k = 0.f;
+    if (k > 0.f) return k;
+    auto a = cocos2d::CCLabelBMFont::create("Ag", "chatFont.fnt");
+    auto b = cocos2d::CCLabelBMFont::create("Ag", "bigFont.fnt");
+    if (!a || !b) return 1.f;
+    float ha = a->getContentSize().height, hb = b->getContentSize().height;
+    k = (ha > 0.f && hb > 0.f) ? std::clamp(hb / ha * 0.8f, 0.3f, 8.f) : 1.f;
+    return k;
+}
+inline float kOf(cocos2d::CCLabelBMFont* l) {
+    if (!l) return 1.f;
+    if (l->getTag() == ARIAL_TAG) return fontK();
+    if (l->getTag() == CHAT_TAG) return fontKChat();
+    return 1.f;
+}
 inline void sc(cocos2d::CCLabelBMFont* l, float s) { l->setScale(s * kOf(l)); }
 inline void fit(cocos2d::CCLabelBMFont* l, float width, float def, float minS) {
     float k = kOf(l), cw = l->getContentSize().width, s = def;
@@ -40,9 +60,9 @@ inline void fit(cocos2d::CCLabelBMFont* l, float width, float def, float minS) {
     l->setScale(s * k);
 }
 inline void setStyle(cocos2d::CCLabelBMFont* l, int style) {
-    bool arial = style != 0 && !fontBad();
+    bool arial = style == 1 && !fontBad();
     l->setFntFile(fontOf(style).c_str());
-    l->setTag(arial ? ARIAL_TAG : 0);
+    l->setTag(style == 2 ? CHAT_TAG : (arial ? ARIAL_TAG : 0));
 }
 
 inline cocos2d::ccColor4F pm(cocos2d::ccColor4F c) { return {c.r * c.a, c.g * c.a, c.b * c.a, c.a}; }
