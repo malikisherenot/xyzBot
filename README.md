@@ -7,10 +7,10 @@
 <p align="center">
   A maximalist <a href="https://geode-sdk.org">Geode</a> bot for Geometry Dash <b>2.2081</b>:<br>
   "All-in-one" bot with wide macro compatibility and a lot of assist tools to make botting easier.
-  [Join the discord server!](https://discord.gg/dMPZGScthA)
 </p>
 
-  
+---
+[Join the discord server!](https://discord.gg/dMPZGScthA)
 ---
 
 ## Features
