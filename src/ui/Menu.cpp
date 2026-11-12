@@ -2,6 +2,7 @@
 #include "../core/Updater.hpp"
 #include <set>
 #include "Glass.hpp"
+#include "MacroEditor.hpp"
 #include "Draw.hpp"
 #include "../core/State.hpp"
 #include "../vis/Vis.hpp"
@@ -973,13 +974,14 @@ void XyzMenu::rebuild(bool animate) {
                 std::error_code ec;
                 auto sz = std::filesystem::file_size(macroDir() / (n + ".xyz"), ec);
                 auto l = mkLabel(((m_mergeBase == n ? "* " : "") + n).c_str());
-                fit(l, w - 215.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y + 4});
+                fit(l, w - 270.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, y + 4});
                 menu->addChild(l);
                 auto s = mkLabel(ec ? "" : (sz >= 1024 ? fmt::format("{:.1f} KB", sz / 1024.0) : fmt::format("{} B", sz)).c_str());
                 sc(s, .26f); s->setOpacity(130); s->setAnchorPoint({0, .5f}); s->setPosition({12, y - 9});
                 menu->addChild(s);
                 std::vector<CCMenuItemSpriteExtra*> ps;
                 ps.push_back(makePill("Del", false, [this, n] { std::error_code e2; std::filesystem::remove(macroDir() / (n + ".xyz"), e2); this->later(false); }));
+                ps.push_back(makePill("Edit", false, [n] { xyz::openMacroEditor(n); }));
                 ps.push_back(makePill("Merge", false, [this, n] {
                     if (m_mergeBase.empty()) {
                         m_mergeBase = n;
