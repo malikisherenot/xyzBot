@@ -1,5 +1,4 @@
 #include "Menu.hpp"
-#include "../core/Updater.hpp"
 #include <set>
 #include "Glass.hpp"
 #include "MacroEditor.hpp"
@@ -69,22 +68,22 @@ static CCMenuItemSpriteExtra* makeSwitch(bool on, std::function<void(bool)> cb) 
         });
     }
     auto node = CCNode::create();
-    node->setContentSize({42, 22});
+    node->setContentSize({34, 20});
     auto tr = CCDrawNode::create(); node->addChild(tr);
     auto kn = CCDrawNode::create(); node->addChild(kn, 1);
     auto st = std::make_shared<bool>(on);
     auto draw = [tr, kn, st] {
         bool v = *st;
         tr->clear(); kn->clear();
-        rrect(tr, {0, 2}, {42, 18}, 9, v ? acc(0.95f, 0.8f) : ccc4f(0.03f, 0.04f, 0.06f, 0.97f), 1.4f, v ? accL(0.95f) : ccc4f(1, 1, 1, 0.55f));
-        disc(kn, {0, 0}, 7.f, v ? ccc4f(1, 1, 1, 1) : ccc4f(0.6f, 0.64f, 0.7f, 1.f), 0.f, {0, 0, 0, 0}, 20);
+        rrect(tr, {0, 3}, {34, 14}, 7, v ? acc(0.95f, 0.8f) : ccc4f(0.04f, 0.03f, 0.06f, 0.92f), 1.f, v ? accL(0.95f) : ccc4f(1, 1, 1, 0.22f));
+        disc(kn, {0, 0}, 4.6f, ccc4f(1, 1, 1, 1.f), 0.f, {0, 0, 0, 0}, 20);
     };
     draw();
-    kn->setPosition({on ? 32.f : 10.f, 11.f});
+    kn->setPosition({on ? 25.f : 9.f, 10.f});
     return CCMenuItemExt::createSpriteExtra(node, [st, draw, cb, kn](auto) {
         *st = !*st; draw();
         kn->stopAllActions();
-        kn->runAction(CCEaseBackOut::create(CCMoveTo::create(.18f, {*st ? 32.f : 10.f, 11.f})));
+        kn->runAction(CCEaseBackOut::create(CCMoveTo::create(.18f, {*st ? 25.f : 9.f, 10.f})));
         cb(*st);
     });
 }
@@ -97,7 +96,7 @@ static CCMenuItemSpriteExtra* makePill(std::string const& text, bool accent, std
     node->setContentSize({w, 20});
     auto d = CCDrawNode::create();
     if (paper()) rrect(d, {0, 0}, {w, 20}, 3, accent ? acc(1.f, 0.6f) : pGray(0.2f), 1.f, accent ? accL(0.9f) : pGray(0.42f));
-    else rrect(d, {0, 0}, {w, 20}, 10, accent ? acc(0.9f, 0.75f) : ccc4f(1, 1, 1, 0.12f), 1.f, accent ? accL(0.8f) : ccc4f(1, 1, 1, 0.25f));
+    else rrect(d, {0, 0}, {w, 20}, 5, accent ? acc(0.9f, 0.75f) : ccc4f(1, 1, 1, 0.10f), 1.f, accent ? accL(0.8f) : ccc4f(1, 1, 1, 0.14f));
     node->addChild(d);
     lbl->setPosition({w / 2, 10});
     node->addChild(lbl);
@@ -109,7 +108,7 @@ static CCMenuItemSpriteExtra* makeRound(char const* glyph, std::function<void()>
     node->setContentSize({20, 20});
     auto d = CCDrawNode::create();
     if (paper()) rrect(d, {0, 0}, {20, 20}, 3, pGray(0.2f), 1.f, pGray(0.42f));
-    else disc(d, {10, 10}, 10.f, ccc4f(1, 1, 1, 0.13f), 1.f, ccc4f(1, 1, 1, 0.3f), 24);
+    else rrect(d, {0, 0}, {20, 20}, 5, ccc4f(1, 1, 1, 0.10f), 1.f, ccc4f(1, 1, 1, 0.14f));
     node->addChild(d);
     auto l = mkLabel(glyph);
     sc(l, .42f); l->setPosition({10, 10});
@@ -209,7 +208,6 @@ static std::string helpText(std::string const& k) {
         {"Trajectory Autoclicker", "Every tick it simulates what happens if the current input state continues. If that dies within the lookahead, it holds, releases or taps instead, whichever survives longest. Works while recording, so the clicks are saved in the macro. Orbs, pads and portals are not simulated yet."},
         {"Click Lookahead", "How many ticks ahead the Trajectory Autoclicker looks. 1 only reacts to death on the next tick (Echo default). Higher reacts earlier but costs more per tick."},
         {"Profiler", "Times what a tick costs and where it goes, and estimates how much faster running many ticks in one update call could be. Show the results with the Profiler labels (Labels page). Costs a little speed itself, turn it off when you are done."},
-        {"Check For Updates On Start", "Once a day, when the game starts, checks GitHub for a newer xyzBot and tells you if there is one. Nothing is downloaded until you press Download."},
         {"UI Style", "Glass is the blurred panel with the tabs on the side. Paper is a plain flat panel with the tabs on top. The menu reopens when you switch."},
         {"Accuracy", "Vanilla: no position corrections. Input Fixes: the player position is stored and restored at every click. Frame Fixes: stored and restored every tick. A macro plays with whatever fixes it contains, so macros from xdBot load in any mode."},
         {"Fast Sub-Ticks", "At high TPS, skips the progress bar update on the ticks of a frame that are never drawn. Does not change the physics."},
@@ -324,6 +322,33 @@ static std::function<void(double)> numSetter(std::string const& k) {
     return nullptr;
 }
 
+static bool sliderInfo(std::string const& k, double& lo, double& hi, std::function<double()>& val) {
+    auto& c = cfg();
+    auto F = [&](float* p, double a, double b) { lo = a; hi = b; val = [p] { return (double)*p; }; return true; };
+    auto I = [&](int* p, double a, double b) { lo = a; hi = b; val = [p] { return (double)*p; }; return true; };
+    if (k == "Fade In (s)") return F(&c.fadeLevelIn, 0, 10);
+    if (k == "Fade Out (s)") return F(&c.fadeLevelOut, 0, 10);
+    if (k == "Audio Fade In (s)") return F(&c.fadeAudioIn, 0, 10);
+    if (k == "Audio Fade Out (s)") return F(&c.fadeAudioOut, 0, 10);
+    if (k == "Frame Budget (ms)") return F(&c.budgetMs, 1, 100);
+    if (k == "Fly Threshold P1") return F(&c.sFlyThr[0], 0, 50);
+    if (k == "Fly Threshold P2") return F(&c.sFlyThr[1], 0, 50);
+    if (k == "UFO Threshold P1") return F(&c.sUfoThr[0], 0, 300);
+    if (k == "UFO Threshold P2") return F(&c.sUfoThr[1], 0, 300);
+    if (k == "Extra Clicks Amount") return I(&c.extraAmt, 1, 10);
+    if (k == "Steps Per +N Button") return I(&c.stepN, 1, 240);
+    if (k == "Hold Speed (ticks/frame)") return I(&c.holdRate, 1, 16);
+    if (k == "Extra Weight (%)") return I(&c.legacyShipPct, 0, 100);
+    if (k == "Trail Length") return I(&c.trailLen, 10, 2000);
+    if (k == "Length") return I(&c.trajLen, 10, 2000);
+    if (k == "Lookahead Ticks") return I(&c.pdLook, 1, 10);
+    if (k == "Click Lookahead") return I(&c.trajLook, 1, 240);
+    if (k == "FPS") return I(&c.renderFps, 10, 240);
+    if (k == "Bitrate (Mbps)") return I(&c.renderBitrate, 1, 200);
+    if (k == "End Tail (s)") return I(&c.renderTail, 0, 30);
+    return false;
+}
+
 class XyzValuePopup : public geode::Popup {
     TextInput* m_input = nullptr;
     std::function<void(double)> m_cb;
@@ -353,6 +378,98 @@ public:
         });
         ok->setPosition({125.f, 28.f});
         menu->addChild(ok);
+        return true;
+    }
+};
+
+// Slider for the Glass UI. A CCMenu subclass so it gets touches like every other menu (also inside the scroll layer).
+class XyzSlider : public CCMenu {
+    float m_w = 100.f, m_frac = 0.f;
+    bool m_drag = false;
+    CCDrawNode* m_draw = nullptr;
+    CCNode* m_view = nullptr;
+    std::function<void(float)> m_cb;
+
+    void redraw() {
+        m_draw->clear();
+        float x = m_w * m_frac;
+        m_draw->drawSegment({0, 0}, {m_w, 0}, 1.3f, pm(ccc4f(1, 1, 1, 0.22f)));
+        if (x > 0.5f) m_draw->drawSegment({0, 0}, {x, 0}, 1.3f, pm(accL(1.f)));
+        disc(m_draw, {x, 0}, 5.2f, ccc4f(1, 1, 1, 1.f), 0.f, {0, 0, 0, 0}, 20);
+    }
+    bool inside(CCTouch* t, float pad) {
+        for (CCNode* n = this; n; n = n->getParent()) if (!n->isVisible()) return false;
+        auto loc = t->getLocation();
+        if (m_view) {
+            auto lp = m_view->convertToNodeSpace(loc);
+            auto sz = m_view->getContentSize();
+            if (lp.x < 0 || lp.y < 0 || lp.x > sz.width || lp.y > sz.height) return false;
+        }
+        auto p = this->convertToNodeSpace(loc);
+        return p.x >= -pad && p.x <= m_w + pad && p.y >= 0.f && p.y <= 18.f;
+    }
+    void applyTouch(CCTouch* t) {
+        auto p = this->convertToNodeSpace(t->getLocation());
+        float f = std::clamp(p.x / m_w, 0.f, 1.f);
+        if (f == m_frac) return;
+        m_frac = f;
+        this->redraw();
+        if (m_cb) m_cb(f);
+    }
+public:
+    static XyzSlider* create(float w, float frac, CCNode* view, std::function<void(float)> cb) {
+        auto s = new XyzSlider();
+        if (s && s->init()) {
+            s->autorelease();
+            s->m_w = w; s->m_frac = std::clamp(frac, 0.f, 1.f); s->m_view = view; s->m_cb = std::move(cb);
+            s->setContentSize({w, 18.f});
+            s->m_draw = CCDrawNode::create();
+            s->m_draw->setPosition({0, 9.f});
+            s->addChild(s->m_draw);
+            s->redraw();
+            return s;
+        }
+        delete s;
+        return nullptr;
+    }
+    bool ccTouchBegan(CCTouch* t, CCEvent*) override {
+        if (!this->inside(t, 8.f)) return false;
+        m_drag = true;
+        this->applyTouch(t);
+        return true;
+    }
+    void ccTouchMoved(CCTouch* t, CCEvent*) override { if (m_drag) this->applyTouch(t); }
+    void ccTouchEnded(CCTouch*, CCEvent*) override { m_drag = false; }
+    void ccTouchCancelled(CCTouch*, CCEvent*) override { m_drag = false; }
+};
+
+class XyzChoicePopup : public geode::Popup {
+    std::function<void(int)> m_cb;
+public:
+    static void open(std::string title, std::vector<std::string> opts, int cur, std::function<void(int)> cb) {
+        auto p = new XyzChoicePopup();
+        if (p->setup(title, opts, cur, std::move(cb))) { p->autorelease(); p->show(); }
+        else delete p;
+    }
+    bool setup(std::string const& title, std::vector<std::string> const& opts, int cur, std::function<void(int)> cb) {
+        m_cb = std::move(cb);
+        float rowH = 28.f;
+        float h = std::min(64.f + opts.size() * rowH, 300.f);
+        if (!Popup::init(240.f, h)) return false;
+        this->setTitle(title);
+        auto menu = CCMenu::create();
+        menu->setPosition({0, 0});
+        m_mainLayer->addChild(menu);
+        for (size_t i = 0; i < opts.size(); ++i) {
+            int idx = (int)i;
+            auto b = makePill(opts[i], idx == cur, [this, idx] {
+                auto cb2 = m_cb;
+                this->onClose(nullptr);
+                if (cb2) cb2(idx);
+            }, 170.f);
+            b->setPosition({120.f, h - 52.f - i * rowH});
+            menu->addChild(b);
+        }
         return true;
     }
 };
@@ -489,12 +606,24 @@ bool XyzMenu::init() {
     this->buildSide();
     this->rebuild(true);
 
+    {
+        auto dm = CCMenu::create();
+        dm->setPosition({0, 0});
+        m_mainLayer->addChild(dm, 20);
+        auto db = makePill("Discord", false, [] {
+            geode::createQuickPopup("Discord", "Join the discord server to report bugs & suggestions?", "No", "Join", [](auto*, bool join) {
+                if (join) geode::utils::web::openLinkInBrowser("https://discord.gg/Pu5GPAQr5");
+            });
+        });
+        db->setPosition({ws.width - 10.f - db->getContentWidth() / 2.f - (ws.width - m_w) / 2.f, 18.f - (ws.height - m_h) / 2.f});
+        dm->addChild(db);
+    }
+
     m_mainLayer->setScale(.92f);
     m_mainLayer->setPositionY(m_mainLayer->getPositionY() - 10.f);
     m_mainLayer->runAction(CCEaseExponentialOut::create(CCScaleTo::create(.26f, 1.f)));
     m_mainLayer->runAction(CCEaseExponentialOut::create(CCMoveBy::create(.26f, {0, 10.f})));
     this->schedule(schedule_selector(XyzMenu::fadeStep));
-    this->schedule(schedule_selector(XyzMenu::pollUpdate), 0.4f);
     return true;
 }
 
@@ -524,13 +653,16 @@ void XyzMenu::buildHead() {
         top->addChild(x);
         return;
     }
-    auto title = mkLabel("xyzBot");
-    sc(title, .5f); title->setAnchorPoint({0, .5f}); title->setPosition({18, m_h - 20});
+    {
+        auto bd = CCDrawNode::create();
+        rrect(bd, {1, m_h - 38.f}, {m_w - 2.f, 37.f}, 15, ccc4f(1, 1, 1, 0.05f), 0.f, {0, 0, 0, 0});
+        bd->drawSegment({2, m_h - 38.f}, {m_w - 2.f, m_h - 38.f}, 0.5f, pm(ccc4f(1, 1, 1, 0.09f)));
+        bd->drawSegment({SW + 14.f, 10.f}, {SW + 14.f, m_h - 42.f}, 0.5f, pm(ccc4f(1, 1, 1, 0.09f)));
+        m_head->addChild(bd, -1);
+    }
+    auto title = mkLabel(fmt::format("xyzBot v{}", Mod::get()->getVersion().toVString().substr(1)).c_str());
+    sc(title, .45f); title->setOpacity(225); title->setPosition({m_w / 2, m_h - 20});
     m_head->addChild(title);
-    auto sub = mkLabel(fmt::format("v{}", Mod::get()->getVersion().toVString().substr(1)).c_str());
-    sc(sub, .5f); sub->setOpacity(150); sub->setAnchorPoint({0, .5f});
-    sub->setPosition({title->getPositionX() + title->getScaledContentSize().width + 6, m_h - 22});
-    m_head->addChild(sub);
     auto top = CCMenu::create();
     top->setPosition({0, 0});
     m_head->addChild(top);
@@ -549,13 +681,6 @@ void XyzMenu::fadeStep(float dt) {
     m_fade = std::clamp(m_fade + dt * (m_closing ? -8.f : 6.f), 0.f, 1.f);
     if (m_glass) glass::setAlpha(m_glass, m_fade);
     if (!m_closing && m_fade >= 1.f) this->unschedule(schedule_selector(XyzMenu::fadeStep));
-}
-
-void XyzMenu::pollUpdate(float) {
-    int st = (int)updater::state();
-    if (st == m_updSeen) return;
-    m_updSeen = st;
-    if (m_sub == "update" || (m_tab == 0 && m_sub.empty())) this->later(true);
 }
 
 void XyzMenu::onClose(CCObject*) {
@@ -590,13 +715,13 @@ void XyzMenu::moveHl(bool animate) {
         return;
     }
     float h2 = m_h - 52.f;
-    CCPoint p = {16.f, 12.f + h2 - 6.f - 26.f - m_tab * tabPitch(m_h)};
+    CCPoint p = {10.f, 12.f + h2 - 6.f - 26.f - m_tab * tabPitch(m_h)};
     m_hl->stopAllActions();
     if (animate) m_hl->runAction(CCEaseExponentialOut::create(CCMoveTo::create(.28f, p)));
     else m_hl->setPosition(p);
     for (int i = 0; i < (int)m_tabLabels.size(); ++i) {
         m_tabLabels[i]->stopAllActions();
-        m_tabLabels[i]->runAction(CCFadeTo::create(.15f, i == m_tab ? 255 : 170));
+        m_tabLabels[i]->runAction(CCFadeTo::create(.15f, i == m_tab ? 255 : 150));
     }
 }
 
@@ -648,11 +773,9 @@ void XyzMenu::buildSide() {
         return;
     }
     float h2 = m_h - 52.f;
-    auto d = CCDrawNode::create();
-    rrect(d, {10, 12}, {SW, h2}, 12, ccc4f(1, 1, 1, 0.05f), 1.f, ccc4f(1, 1, 1, 0.12f));
-    m_side->addChild(d);
     auto hl = CCDrawNode::create();
-    rrect(hl, {0, 0}, {SW - 12, 26}, 10, acc(0.75f, 0.8f), 1.f, accL(0.7f));
+    rrect(hl, {0, 0}, {SW + 4.f, 26}, 6, ccc4f(1, 1, 1, 0.09f), 0.f, {0, 0, 0, 0});
+    rrect(hl, {SW + 1.f, 3}, {3, 20}, 1.5f, accL(1.f), 0.f, {0, 0, 0, 0});
     m_side->addChild(hl);
     m_hl = hl;
     auto menu = CCMenu::create();
@@ -660,9 +783,9 @@ void XyzMenu::buildSide() {
     m_side->addChild(menu, 2);
     for (int i = 0; i < NTABS; ++i) {
         auto node = CCNode::create();
-        node->setContentSize({SW - 12, 26});
+        node->setContentSize({SW + 4.f, 26});
         auto l = mkLabel(TABS[i]);
-        sc(l, .4f); l->setPosition({(SW - 12) / 2, 13});
+        sc(l, .4f); l->setAnchorPoint({0, .5f}); l->setPosition({12.f, 13});
         node->addChild(l);
         m_tabLabels.push_back(l);
         auto b = CCMenuItemExt::createSpriteExtra(node, [this, i](auto) {
@@ -671,7 +794,7 @@ void XyzMenu::buildSide() {
             this->moveHl(true);
             this->later(true);
         });
-        b->setPosition({10 + SW / 2, 12.f + h2 - 6.f - 13.f - i * tabPitch(m_h)});
+        b->setPosition({10 + (SW + 4.f) / 2, 12.f + h2 - 6.f - 13.f - i * tabPitch(m_h)});
         menu->addChild(b);
     }
     this->moveHl(false);
@@ -690,6 +813,11 @@ struct Row {
     std::function<void(double)> setv;
     std::vector<std::pair<std::string, std::function<void()>>> pills;
     std::function<void(CCMenu*, float, float)> custom;
+    double lo = 0, hi = 0;
+    std::function<double()> val;
+    std::vector<std::string> opts;
+    std::function<int()> cur;
+    std::function<void(int)> pick;
 };
 }
 
@@ -701,16 +829,21 @@ void XyzMenu::rebuild(bool animate) {
 
     auto sec = [&](std::string t) { Row x; x.k = Row::Section; x.label = std::move(t); rows.push_back(std::move(x)); };
     auto tog = [&](std::string t, bool v, std::function<void(bool)> f, std::string gear = "") { Row x; x.k = Row::Toggle; x.label = std::move(t); x.on = v; x.setb = std::move(f); x.gear = std::move(gear); x.help = helpText(x.label); rows.push_back(std::move(x)); };
-    auto numS = [&](std::string t, std::function<std::string()> g, std::function<void(int)> s, std::function<void(double)> sv) { Row x; x.k = Row::Num; x.label = std::move(t); x.get = std::move(g); x.step = std::move(s); x.setv = std::move(sv); x.help = helpText(x.label); rows.push_back(std::move(x)); };
+    auto numS = [&](std::string t, std::function<std::string()> g, std::function<void(int)> s, std::function<void(double)> sv) { Row x; x.k = Row::Num; x.label = std::move(t); x.get = std::move(g); x.step = std::move(s); x.setv = std::move(sv); x.help = helpText(x.label); sliderInfo(x.label, x.lo, x.hi, x.val); rows.push_back(std::move(x)); };
     auto num = [&](std::string t, std::function<std::string()> g, std::function<void(int)> s) { auto sv = numSetter(t); numS(std::move(t), std::move(g), std::move(s), std::move(sv)); };
     auto txt = [&](std::string t) { Row x; x.k = Row::Text; x.label = std::move(t); rows.push_back(std::move(x)); };
     auto pills = [&](std::vector<std::pair<std::string, std::function<void()>>> p) { Row x; x.k = Row::Pills; x.pills = std::move(p); rows.push_back(std::move(x)); };
+    auto rng = [&](double lo, double hi, std::function<double()> v) { auto& r2 = rows.back(); r2.lo = lo; r2.hi = hi; r2.val = std::move(v); };
+    auto opt = [&](std::vector<std::string> o, std::function<int()> cu, std::function<void(int)> pk) { auto& r2 = rows.back(); r2.opts = std::move(o); r2.cur = std::move(cu); r2.pick = std::move(pk); };
     auto custom = [&](std::function<void(CCMenu*, float, float)> f) { Row x; x.k = Row::Custom; x.custom = std::move(f); rows.push_back(std::move(x)); };
 
     auto colorRows = [&](int* cr, int* cg, int* cb, std::function<void()> changed) {
         numS("Red", [cr] { return fmt::format("{}", *cr); }, [cr, changed](int d) { *cr = std::clamp(*cr + d * 15, 0, 255); changed(); }, [cr, changed](double v) { *cr = std::clamp((int)std::lround(v), 0, 255); changed(); });
+        rng(0, 255, [cr] { return (double)*cr; });
         numS("Green", [cg] { return fmt::format("{}", *cg); }, [cg, changed](int d) { *cg = std::clamp(*cg + d * 15, 0, 255); changed(); }, [cg, changed](double v) { *cg = std::clamp((int)std::lround(v), 0, 255); changed(); });
+        rng(0, 255, [cg] { return (double)*cg; });
         numS("Blue", [cb] { return fmt::format("{}", *cb); }, [cb, changed](int d) { *cb = std::clamp(*cb + d * 15, 0, 255); changed(); }, [cb, changed](double v) { *cb = std::clamp((int)std::lround(v), 0, 255); changed(); });
+        rng(0, 255, [cb] { return (double)*cb; });
     };
     auto labelChips = [&](std::function<bool(int)> selected, std::function<void(int)> pick) {
         custom([=, this](CCMenu* menu, float y, float w) {
@@ -737,20 +870,6 @@ void XyzMenu::rebuild(bool animate) {
             tog("Skip Visibility On Sub-Ticks", c.skipVis, [](bool v) { cfg().skipVis = v; saveCfg(); });
             sec("PROFILER");
             tog("Profiler", c.profiler, [](bool v) { cfg().profiler = v; rt().prof = Prof{}; saveCfg(); });
-        } else if (sub == "update") {
-            auto st = updater::state();
-            sec("UPDATE " + updater::latest());
-            txt(updater::message());
-            if (st == updater::State::Available || st == updater::State::Failed) {
-                std::vector<std::pair<std::string, std::function<void()>>> p;
-                if (st == updater::State::Available) p.push_back({"Download", [this] { updater::download(); this->later(true); }});
-                p.push_back({"Open Releases", [] { geode::utils::web::openLinkInBrowser(updater::releasesUrl()); }});
-                pills(std::move(p));
-            } else if (st == updater::State::Done) {
-                pills({{"Restart Game", [] { updater::restart(); }}});
-            }
-            sec("CHANGELOG");
-            for (auto const& l : updater::notes()) txt(l);
         } else if (sub == "speed") {
             sec("SPEEDHACK SETTINGS");
             num("Speed", [] { return fmt::format("{:.2f}", cfg().speedVal); }, [](int d) { cfg().speedVal = std::clamp(cfg().speedVal + d * 0.1f, 0.05f, 100.f); saveCfg(); });
@@ -800,6 +919,7 @@ void XyzMenu::rebuild(bool animate) {
             static char const* FMTS[] = {"Name_1", "Name 1", "Name (1)", "Name-1"};
             sec("NAMING SETTINGS");
             num("Rename Format", [] { return std::string(FMTS[std::clamp(cfg().renameFmt, 0, 3)]); }, [](int d) { auto& v = cfg().renameFmt; v = (v + d + 4) % 4; saveCfg(); });
+            opt(std::vector<std::string>{FMTS[0], FMTS[1], FMTS[2], FMTS[3]}, [] { return std::clamp(cfg().renameFmt, 0, 3); }, [](int v) { cfg().renameFmt = v; saveCfg(); });
         } else if (sub == "seq") {
             sec("SEQUENCE SETTINGS");
             tog("Random Order", c.seqRandom, [](bool v) { cfg().seqRandom = v; saveCfg(); });
@@ -856,9 +976,13 @@ void XyzMenu::rebuild(bool animate) {
             tog("Enabled", labels::cfg(i).on, [i](bool v) { labels::cfg(i).on = v; labels::save(i); });
             num("Anchor", [i] { static char const* a[] = {"Top Left", "Top Right", "Bottom Left", "Bottom Right"}; return std::string(a[std::clamp(labels::cfg(i).anchor, 0, 3)]); },
                 [i](int d) { auto& a = labels::cfg(i).anchor; a = (a + d + 4) % 4; labels::save(i); });
+            opt(std::vector<std::string>{"Top Left", "Top Right", "Bottom Left", "Bottom Right"}, [i] { return std::clamp(labels::cfg(i).anchor, 0, 3); }, [i](int v) { labels::cfg(i).anchor = v; labels::save(i); });
             num("Font", [i] { return std::string(labels::cfg(i).font == 0 ? "GD Big" : labels::cfg(i).font == 2 ? "GD Small" : "Arial"); }, [i](int) { auto& f = labels::cfg(i).font; f = (f + 1) % 3; labels::save(i); });
+            opt(std::vector<std::string>{"GD Big", "Arial", "GD Small"}, [i] { return std::clamp(labels::cfg(i).font, 0, 2); }, [i](int v) { labels::cfg(i).font = v; labels::save(i); });
             numS("Size", [i] { return fmt::format("{:.2f}", labels::cfg(i).scale); }, [i](int d) { auto& s = labels::cfg(i).scale; s = std::clamp(s + d * 0.05f, 0.1f, 2.f); labels::save(i); }, [i](double v) { labels::cfg(i).scale = std::clamp((float)v, 0.1f, 2.f); labels::save(i); });
+            rng(0.1, 2.0, [i] { return (double)labels::cfg(i).scale; });
             numS("Opacity", [i] { return fmt::format("{:.2f}", labels::cfg(i).opacity); }, [i](int d) { auto& o = labels::cfg(i).opacity; o = std::clamp(o + d * 0.1f, 0.1f, 1.f); labels::save(i); }, [i](double v) { labels::cfg(i).opacity = std::clamp((float)v, 0.1f, 1.f); labels::save(i); });
+            rng(0.1, 1.0, [i] { return (double)labels::cfg(i).opacity; });
             sec("COLOR");
             labelChips([i](int k) { auto& l = labels::cfg(i); return l.r == LABEL_COLORS[k][0] && l.g == LABEL_COLORS[k][1] && l.b == LABEL_COLORS[k][2]; },
                        [i](int k) { auto& l = labels::cfg(i); l.r = LABEL_COLORS[k][0]; l.g = LABEL_COLORS[k][1]; l.b = LABEL_COLORS[k][2]; labels::save(i); });
@@ -878,32 +1002,30 @@ void XyzMenu::rebuild(bool animate) {
         tog("Noclip", c.noclip, [](bool v) { cfg().noclip = v; saveCfg(); }, "noclip");
         sec("ACCURACY");
         num("Accuracy", [] { return std::string(ACCURACY[std::clamp(cfg().accuracy, 0, 2)]); }, [](int d) { auto& v = cfg().accuracy; v = (v + d + 3) % 3; saveCfg(); });
+        opt(std::vector<std::string>{ACCURACY[0], ACCURACY[1], ACCURACY[2]}, [] { return std::clamp(cfg().accuracy, 0, 2); }, [](int v) { cfg().accuracy = v; saveCfg(); });
         tog("Ignore Level Check", c.ignoreLevel, [](bool v) { cfg().ignoreLevel = v; saveCfg(); });
         tog("Block Inputs In Playback", c.blockInputs, [](bool v) { cfg().blockInputs = v; saveCfg(); });
         sec("RECORDING");
         num("Record Players", [] { return std::string(PLAYERS[std::clamp(cfg().recPlayers, 0, 2)]); }, [](int d) { auto& v = cfg().recPlayers; v = (v + d + 3) % 3; saveCfg(); });
+        opt(std::vector<std::string>{PLAYERS[0], PLAYERS[1], PLAYERS[2]}, [] { return std::clamp(cfg().recPlayers, 0, 2); }, [](int v) { cfg().recPlayers = v; saveCfg(); });
         tog("Auto Name Replay", c.autoName, [](bool v) { cfg().autoName = v; saveCfg(); }, "naming");
         tog("No Overwrite", c.noOverwrite, [](bool v) { cfg().noOverwrite = v; saveCfg(); });
         sec("PLAYBACK");
         num("Play Players", [] { return std::string(PLAYERS[std::clamp(cfg().playPlayers, 0, 2)]); }, [](int d) { auto& v = cfg().playPlayers; v = (v + d + 3) % 3; saveCfg(); });
+        opt(std::vector<std::string>{PLAYERS[0], PLAYERS[1], PLAYERS[2]}, [] { return std::clamp(cfg().playPlayers, 0, 2); }, [](int v) { cfg().playPlayers = v; saveCfg(); });
         tog("Take Over On Input", c.takeOver, [](bool v) { cfg().takeOver = v; saveCfg(); });
         tog("Continue After Finish", c.continueEnd, [](bool v) { cfg().continueEnd = v; saveCfg(); });
         tog("Sequence", c.seqOn, [](bool v) { cfg().seqOn = v; saveCfg(); }, "seq");
         sec("AUTOMATION");
         tog("Autosave While Recording", c.autosave, [](bool v) { cfg().autosave = v; saveCfg(); }, "autosave");
         tog("Auto Exit On Finish", c.autoExit, [](bool v) { cfg().autoExit = v; saveCfg(); });
-        sec("UPDATES");
+        sec("INSTALLER");
         {
-            auto st = updater::state();
-            txt(st == updater::State::Idle ? std::string("Not checked yet.") : updater::message());
-            std::vector<std::pair<std::string, std::function<void()>>> p;
-            p.push_back({"Check Now", [this] { updater::check(true); this->later(false); }});
-            if (st == updater::State::Available) p.push_back({"Changelog & Download", [this] { m_sub = "update"; this->later(true); }});
-            if (st == updater::State::Done) p.push_back({"Restart Game", [] { updater::restart(); }});
-            pills(std::move(p));
+            bool have = geode::Loader::get()->isModLoaded("itzmalikhere.xyzbot-installer");
+            txt("Recommended: the xyzBot Installer installs xyzBot and any older version from inside the game.");
+            if (have) txt("The installer is installed. Open it with the button in the main menu.");
+            else pills({{"Get Installer", [] { geode::utils::web::openLinkInBrowser("https://malikisherenot.github.io/xyzBot/"); }}});
         }
-        tog("Check For Updates On Start", c.autoUpdate, [](bool v) { cfg().autoUpdate = v; saveCfg(); });
-        tog("New Release Notification", c.updateNotify, [](bool v) { cfg().updateNotify = v; saveCfg(); });
         break;
     }
     case 1:
@@ -1091,6 +1213,7 @@ void XyzMenu::rebuild(bool animate) {
         num("FPS", [] { return fmt::format("{}", cfg().renderFps); }, [](int d) { cfg().renderFps = std::clamp(cfg().renderFps + d * 10, 10, 240); saveCfg(); });
         num("Bitrate (Mbps)", [] { return fmt::format("{}", cfg().renderBitrate); }, [](int d) { cfg().renderBitrate = std::clamp(cfg().renderBitrate + d, 1, 200); saveCfg(); });
         num("Codec", [] { return std::string(CODEC_NAMES[std::clamp(cfg().renderCodec, 0, 4)]); }, [](int d) { auto& v = cfg().renderCodec; v = (v + d + 5) % 5; saveCfg(); });
+        opt(std::vector<std::string>{CODEC_NAMES[0], CODEC_NAMES[1], CODEC_NAMES[2], CODEC_NAMES[3], CODEC_NAMES[4]}, [] { return std::clamp(cfg().renderCodec, 0, 4); }, [](int v) { cfg().renderCodec = v; saveCfg(); });
         num("End Tail (s)", [] { return fmt::format("{}", cfg().renderTail); }, [](int d) { cfg().renderTail = std::clamp(cfg().renderTail + d, 0, 30); saveCfg(); });
         tog("Include Song Audio", c.renderAudio, [](bool v) { cfg().renderAudio = v; saveCfg(); });
         break;
@@ -1148,18 +1271,62 @@ void XyzMenu::rebuild(bool animate) {
     }
     float cw = m_cw, ch = m_ch;
     float rowH = m_paper ? 26.f : ROW, secH = m_paper ? 24.f : 22.f;
+    auto hOf = [&](Row const& r) {
+        if (r.k == Row::Section) return secH;
+        if (!m_paper && r.k == Row::Num && r.setv && r.hi > r.lo && r.val) return rowH + 2.f + 14.f;
+        return rowH + 2.f;
+    };
+    std::vector<float> rowX(rows.size(), 0.f), rowW(rows.size(), cw), rowY(rows.size(), 0.f);
     float total = 8.f;
-    for (auto& rw : rows) total += (rw.k == Row::Section ? secH : rowH + 2.f);
-    total = std::max(total + 6.f, ch);
+    if (m_paper || cw < 330.f) {
+        for (auto& rw : rows) total += hOf(rw);
+        total = std::max(total + 6.f, ch);
+        float yy = total - 4.f;
+        for (size_t i = 0; i < rows.size(); ++i) { float h = hOf(rows[i]); rowY[i] = yy - h / 2.f; yy -= h; }
+    } else {
+        float gap = 10.f, colW = (cw - gap) / 2.f;
+        struct G { size_t a, b; bool wide; };
+        std::vector<G> gs;
+        for (size_t i = 0; i < rows.size();) {
+            size_t j = i + 1;
+            while (j < rows.size() && rows[j].k != Row::Section) ++j;
+            bool wide = false;
+            for (size_t k = i; k < j; ++k) {
+                auto& r = rows[k];
+                if (r.k == Row::Custom || r.k == Row::Text) wide = true;
+                if (r.k == Row::Pills && (float)r.pills.size() * 72.f + 12.f > colW) wide = true;
+            }
+            gs.push_back({i, j, wide});
+            i = j;
+        }
+        float colY[2] = {4.f, 4.f};
+        bool first = true;
+        for (auto& g : gs) {
+            float extra = first ? 0.f : 6.f;
+            first = false;
+            int c = 0; float x = 0.f, w = cw;
+            if (g.wide) { float st = std::max(colY[0], colY[1]) + extra; colY[0] = colY[1] = st; }
+            else { c = colY[1] < colY[0] ? 1 : 0; colY[c] += extra; x = c ? colW + gap : 0.f; w = colW; }
+            for (size_t k = g.a; k < g.b; ++k) {
+                float h = hOf(rows[k]);
+                rowX[k] = x; rowW[k] = w; rowY[k] = -(colY[c] + h / 2.f);
+                colY[c] += h;
+            }
+            if (g.wide) colY[0] = colY[1] = colY[c];
+        }
+        total = std::max(std::max(colY[0], colY[1]) + 10.f, ch);
+        for (auto& yv : rowY) yv += total;
+    }
     content->setContentSize({cw, total});
 
-    float y = total - 4.f;
     int idx = 0;
     for (auto& rw : rows) {
-        float h = rw.k == Row::Section ? secH : rowH + 2.f;
-        float cy = y - h / 2.f;
+        float h = hOf(rw);
+        float cy = rowY[idx];
+        float const px = rowX[idx];
+        float const cw = rowW[idx];
         auto rm = CCMenu::create();
-        rm->setPosition({0, cy});
+        rm->setPosition({px, cy});
         rm->setContentSize({cw, h});
         content->addChild(rm);
 
@@ -1184,67 +1351,113 @@ void XyzMenu::rebuild(bool animate) {
             rm->addChild(it);
         } else if (rw.k == Row::Section) {
             auto l = mkLabel(rw.label.c_str());
-            sc(l, .33f); l->setColor(to3(accL())); l->setAnchorPoint({0, .5f}); l->setPosition({8, -2});
+            sc(l, .38f); l->setOpacity(235); l->setAnchorPoint({0, .5f}); l->setPosition({4, -2});
             rm->addChild(l);
         } else {
             auto bg = CCDrawNode::create();
             if (m_paper) bg->drawSegment({0, -rowH / 2.f}, {cw, -rowH / 2.f}, 0.5f, pm(ccc4f(1, 1, 1, 0.07f)));
-            else rrect(bg, {0, -ROW / 2.f}, {cw, ROW}, 9, ccc4f(1, 1, 1, 0.055f), 1.f, ccc4f(1, 1, 1, 0.10f));
+            else rrect(bg, {0, -(h - 2.f) / 2.f}, {cw, h - 2.f}, 6, ccc4f(0, 0, 0, 0.26f), 1.f, ccc4f(1, 1, 1, 0.05f));
             rm->addChild(bg, -1);
             switch (rw.k) {
             case Row::Toggle: {
                 auto l = mkLabel(rw.label.c_str());
                 float lx = m_paper ? 38.f : 12.f;
-                fit(l, cw - (rw.gear.empty() ? 120.f : 150.f), .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({lx, 0});
+                fit(l, m_paper ? cw - (rw.gear.empty() ? 120.f : 150.f) : cw - 24.f - 48.f - (rw.gear.empty() ? 0.f : 28.f) - (rw.help.empty() ? 0.f : 14.f), .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({lx, 0});
                 rm->addChild(l);
                 if (!rw.help.empty()) {
                     auto hb = makeHelp(rw.label, rw.help);
                     hb->setPosition({lx + l->getScaledContentSize().width + (m_paper ? 16.f : 13.f), 0}); rm->addChild(hb);
                 }
                 auto sw = makeSwitch(rw.on, rw.setb);
-                sw->setPosition({m_paper ? 22.f : cw - 32, 0}); rm->addChild(sw);
+                sw->setPosition({m_paper ? 22.f : cw - 24.f, 0}); rm->addChild(sw);
                 if (!rw.gear.empty()) {
                     auto key = rw.gear;
                     auto g = makeGear([this, key] { m_sub = key; this->later(true); });
-                    g->setPosition({m_paper ? cw - 20.f : cw - 76, 0}); rm->addChild(g);
+                    g->setPosition({m_paper ? cw - 20.f : cw - 58.f, 0}); rm->addChild(g);
                 }
                 break;
             }
             case Row::Num: {
                 auto l = mkLabel(rw.label.c_str());
-                fit(l, cw - 215.f, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
+                bool sl = !m_paper && rw.setv && rw.hi > rw.lo && (bool)rw.val;
+                bool dd = !m_paper && !rw.opts.empty();
+                bool narrow = !m_paper && cw < 250.f;
+                bool showPM = !(narrow && rw.setv) && !sl && !dd;
+                float ty = sl ? 11.f : 0.f;
+                float vx = sl ? cw - 40.f : (narrow ? (rw.setv ? cw - 42.f : cw - 47.f) : cw - 74.f);
+                float vw = sl ? 50.f : ((narrow && !rw.setv) ? 30.f : 70.f);
+                float boxW = sl ? 60.f : 74.f;
+                float minX = narrow ? cw - 80.f : cw - 122.f, plX = narrow ? cw - 14.f : cw - 26.f;
+                float labLim = !narrow ? cw - 215.f : (rw.setv ? cw - 99.f : cw - 100.f) - (rw.help.empty() ? 0.f : 14.f);
+                if (sl) labLim = cw - 12.f - 70.f - (rw.help.empty() ? 0.f : 14.f);
+                if (dd) labLim = cw - 12.f - 98.f - (rw.help.empty() ? 0.f : 14.f);
+                fit(l, labLim, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, ty});
                 rm->addChild(l);
                 if (!rw.help.empty()) {
                     auto hb = makeHelp(rw.label, rw.help);
-                    hb->setPosition({12.f + l->getScaledContentSize().width + 13.f, 0}); rm->addChild(hb);
+                    hb->setPosition({12.f + l->getScaledContentSize().width + 13.f, ty}); rm->addChild(hb);
+                }
+                if (dd) {
+                    float bw = 86.f;
+                    auto box = CCNode::create();
+                    box->setContentSize({bw, 20});
+                    auto bd = CCDrawNode::create();
+                    rrect(bd, {0, 0}, {bw, 20}, 5, ccc4f(0, 0, 0, 0.30f), 1.f, ccc4f(1, 1, 1, 0.14f));
+                    poly(bd, {{bw - 15.f, 12.f}, {bw - 7.f, 12.f}, {bw - 11.f, 7.5f}}, ccc4f(1, 1, 1, 0.85f));
+                    box->addChild(bd);
+                    auto cur = mkLabel(rw.get().c_str());
+                    sc(cur, .36f); fit(cur, bw - 28.f, .36f, .1f);
+                    cur->setAnchorPoint({0, .5f}); cur->setPosition({8, 10});
+                    box->addChild(cur);
+                    auto title = rw.label; auto opts = rw.opts; auto curf = rw.cur; auto pick = rw.pick;
+                    Ref<XyzMenu> self = this;
+                    auto bi = CCMenuItemExt::createSpriteExtra(box, [self, title, opts, curf, pick](auto) {
+                        XyzChoicePopup::open(title, opts, curf(), [self, pick](int v) { pick(v); self->later(false); });
+                    });
+                    bi->setPosition({cw - 12.f - bw / 2.f, 0});
+                    rm->addChild(bi);
+                    break;
                 }
                 auto v = mkLabel(rw.get().c_str());
-                v->setColor(to3(accL()));
-                sc(v, .42f); v->setPosition({cw - 74, 0});
-                fit(v, 70.f, .42f, .1f);
+                if (m_paper) v->setColor(to3(accL()));
+                sc(v, .42f); v->setPosition({vx, ty});
+                fit(v, vw, .42f, .1f);
                 rm->addChild(v);
                 auto get = rw.get; auto step = rw.step;
                 Ref<CCLabelBMFont> vr = v;
-                auto fix = [vr, get] { vr->setString(get().c_str()); fit(vr, 70.f, .42f, .1f); };
+                auto fix = [vr, get, vw] { vr->setString(get().c_str()); fit(vr, vw, .42f, .1f); };
                 if (rw.setv) {
                     auto box = CCNode::create();
-                    box->setContentSize({74, 20});
+                    box->setContentSize({boxW, 20});
                     auto bd = CCDrawNode::create();
-                    if (m_paper) rrect(bd, {0, 0}, {74, 20}, 3, pGray(0.15f), 1.f, pGray(0.38f));
-                    else rrect(bd, {0, 0}, {74, 20}, 7, ccc4f(1, 1, 1, 0.07f), 1.f, ccc4f(1, 1, 1, 0.28f));
+                    if (m_paper) rrect(bd, {0, 0}, {boxW, 20}, 3, pGray(0.15f), 1.f, pGray(0.38f));
+                    else rrect(bd, {0, 0}, {boxW, 20}, 5, ccc4f(0, 0, 0, 0.30f), 1.f, ccc4f(1, 1, 1, 0.14f));
                     box->addChild(bd);
                     auto title = rw.label; auto setv = rw.setv;
                     auto bi = CCMenuItemExt::createSpriteExtra(box, [title, get, setv, fix](auto) {
                         XyzValuePopup::open(title, get(), [setv, fix](double val) { setv(val); fix(); });
                     });
-                    bi->setPosition({cw - 74, 0});
+                    bi->setPosition({vx, ty});
                     rm->addChild(bi, 0);
                     v->setZOrder(1);
                 }
-                auto mi = makeRound("-", [step, fix] { step(-1); fix(); });
-                mi->setPosition({cw - 122, 0}); rm->addChild(mi);
-                auto pl = makeRound("+", [step, fix] { step(1); fix(); });
-                pl->setPosition({cw - 26, 0}); rm->addChild(pl);
+                if (showPM) {
+                    auto mi = makeRound("-", [step, fix] { step(-1); fix(); });
+                    mi->setPosition({minX, 0}); rm->addChild(mi);
+                    auto pl = makeRound("+", [step, fix] { step(1); fix(); });
+                    pl->setPosition({plX, 0}); rm->addChild(pl);
+                }
+                if (sl) {
+                    double lo = rw.lo, hi = rw.hi; auto setv = rw.setv; auto valf = rw.val;
+                    float frac0 = (float)std::clamp((valf() - lo) / (hi - lo), 0.0, 1.0);
+                    auto slider = XyzSlider::create(cw - 24.f, frac0, m_scroll, [lo, hi, setv, fix](float f) {
+                        double step = (hi - lo) >= 50.0 ? 1.0 : ((hi - lo) >= 10.0 ? 0.1 : 0.01);
+                        double v = lo + (double)f * (hi - lo);
+                        v = std::round(v / step) * step;
+                        setv(v); fix();
+                    });
+                    if (slider) { slider->setPosition({12.f, -h / 2.f + 4.f}); rm->addChild(slider, 2); }
+                }
                 break;
             }
             case Row::Text: {
@@ -1270,15 +1483,15 @@ void XyzMenu::rebuild(bool animate) {
         }
 
         if (animate) {
-            rm->setPositionX(28.f);
+            rm->setPositionX(px + 28.f);
             rm->setCascadeOpacityEnabled(true);
             rm->setOpacity(0);
             rm->runAction(CCSequence::create(
                 CCDelayTime::create(std::min(idx, 12) * 0.03f),
-                CCSpawn::create(CCEaseExponentialOut::create(CCMoveTo::create(.3f, {0, cy})), CCFadeIn::create(.25f), nullptr),
+                CCSpawn::create(CCEaseExponentialOut::create(CCMoveTo::create(.3f, {px, cy})), CCFadeIn::create(.25f), nullptr),
                 nullptr));
         }
-        y -= h; ++idx;
+        ++idx;
     }
     m_scroll->moveToTop();
 }

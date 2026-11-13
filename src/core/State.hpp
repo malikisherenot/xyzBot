@@ -45,7 +45,6 @@ struct Cfg {
     int pdLook = 2;
     bool trajAuto = false;
     bool profiler = false;
-    bool autoUpdate = true, updateNotify = true;
     int trajLook = 1;
     bool layout = false;
     bool speedAudio = true;
