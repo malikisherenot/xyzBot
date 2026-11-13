@@ -2,7 +2,7 @@
 
 ## v1.17.0-beta.2
 - Added the Macro Editor (Edit button in the Macros tab)
-- Added Backstep and a Back button to the frame stepper (now at the bottom right)
+- Added a Back button to the frame stepper (now at the bottom right)
 - Added the GD Small font
 - Redesigned the Glass UI: side tabs with an accent line, a header bar, the settings in two columns of cards, sliders for number settings and dropdowns for choices
 - Added a Discord button to the menu
