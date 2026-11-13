@@ -49,7 +49,7 @@ void loadCfg() {
     auto& c = cfg(); auto m = Mod::get();
     { int a = m->getSavedValue<int>("accuracy", -1); c.accuracy = a >= 0 ? std::min(a, 2) : (m->getSavedValue<bool>("fixes", true) ? 2 : 0); }
     LD(tps, bool); LD(tpsVal, double); LD(budgetMs, double); LD(speed, bool); LD(speedVal, double);
-    LD(noclip, bool); LD(trajAuto, bool); LD(profiler, bool); LD(autoUpdate, bool); LD(updateNotify, bool); LD(trajLook, int); LD(fastSub, bool); LD(skipVis, bool); LD(ignoreLevel, bool); LD(hitboxes, bool);
+    LD(noclip, bool); LD(trajAuto, bool); LD(profiler, bool); LD(trajLook, int); LD(fastSub, bool); LD(skipVis, bool); LD(ignoreLevel, bool); LD(hitboxes, bool);
     LD(hbPlayer, bool); LD(hbSolid, bool); LD(hbHazard, bool); LD(hbSpecial, bool); LD(hbRotated, bool);
     LD(trail, bool); LD(trailLen, int); LD(traj, bool); LD(trajLen, int);
     LD(blockInputs, bool); LD(maintainGravity, bool); LD(mirror, bool); LD(mirrorInv, bool); LD(noMirror, bool);
@@ -100,7 +100,7 @@ void saveCfg() {
     auto& c = cfg(); auto m = Mod::get();
     SV(tps, bool); m->setSavedValue<double>("tpsVal", c.tpsVal); m->setSavedValue<double>("budgetMs", c.budgetMs);
     SV(speed, bool); m->setSavedValue<double>("speedVal", c.speedVal);
-    SV(noclip, bool); SV(accuracy, int); SV(trajAuto, bool); SV(profiler, bool); SV(autoUpdate, bool); SV(updateNotify, bool); SV(trajLook, int); SV(fastSub, bool); SV(skipVis, bool); SV(ignoreLevel, bool); SV(hitboxes, bool);
+    SV(noclip, bool); SV(accuracy, int); SV(trajAuto, bool); SV(profiler, bool); SV(trajLook, int); SV(fastSub, bool); SV(skipVis, bool); SV(ignoreLevel, bool); SV(hitboxes, bool);
     SV(hbPlayer, bool); SV(hbSolid, bool); SV(hbHazard, bool); SV(hbSpecial, bool); SV(hbRotated, bool);
     SV(trail, bool); SV(trailLen, int); SV(traj, bool); SV(trajLen, int);
     SV(blockInputs, bool); SV(maintainGravity, bool); SV(mirror, bool); SV(mirrorInv, bool); SV(noMirror, bool);
