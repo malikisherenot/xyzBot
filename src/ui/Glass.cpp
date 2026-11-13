@@ -94,7 +94,7 @@ public:
     std::pair<Ref<CCRenderTexture>, Ref<CCRenderTexture>> m_extra;
     float m_alpha = 0.f;
     CCPoint m_acc = {0.f, 0.85f}; float m_accB = 0.6f;
-    ccColor3B m_accent = {0, 217, 153}, m_tint = {13, 20, 28};
+    ccColor3B m_accent = {183, 140, 255}, m_tint = {37, 22, 56};
 
     static ShaderSprite* create(CCTexture2D* tex, CCGLProgram* prog) {
         auto s = new ShaderSprite();

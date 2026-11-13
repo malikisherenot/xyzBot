@@ -44,7 +44,7 @@ inline float fontKChat() {
     auto b = cocos2d::CCLabelBMFont::create("Ag", "bigFont.fnt");
     if (!a || !b) return 1.f;
     float ha = a->getContentSize().height, hb = b->getContentSize().height;
-    k = (ha > 0.f && hb > 0.f) ? std::clamp(hb / ha * 0.8f, 0.3f, 8.f) : 1.f;
+    k = (ha > 0.f && hb > 0.f) ? std::clamp(hb / ha * 0.5f, 0.3f, 8.f) : 1.f;
     return k;
 }
 inline float kOf(cocos2d::CCLabelBMFont* l) {

@@ -90,8 +90,8 @@ struct Cfg {
     int holdRate = 1;
     int uiStyle = 0, fontGlass = 0, fontPaper = 1;
     int themeIdx = 0;
-    int accR = 0, accG = 217, accB = 153;
-    int tintR = 13, tintG = 20, tintB = 28;
+    int accR = 183, accG = 140, accB = 255;
+    int tintR = 37, tintG = 22, tintB = 56;
     bool acOn[2] = {false, false};
     int acHold[2] = {4, 4}, acRel[2] = {4, 4}, acClicks[2] = {1, 1};
 };

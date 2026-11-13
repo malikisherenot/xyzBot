@@ -90,6 +90,11 @@ void loadCfg() {
         auto k = std::to_string(i);
         c.layoutBg[i] = m->getSavedValue<int>("layoutBg" + k, 160); c.layoutGr[i] = m->getSavedValue<int>("layoutGr" + k, 160);
     } LD(stepBar, bool); LD(stepN, int); LD(holdRate, int); LD(uiStyle, int); LD(fontGlass, int); LD(fontPaper, int); LD(themeIdx, int); LD(accR, int); LD(accG, int); LD(accB, int); LD(tintR, int); LD(tintG, int); LD(tintB, int);
+    if (c.themeIdx == 0 && c.accR == 0 && c.accG == 217 && c.accB == 153 && c.tintR == 13 && c.tintG == 20 && c.tintB == 28) {
+        c.accR = 183; c.accG = 140; c.accB = 255;
+        c.tintR = 37; c.tintG = 22; c.tintB = 56;
+        SV(accR, int); SV(accG, int); SV(accB, int); SV(tintR, int); SV(tintG, int); SV(tintB, int);
+    }
     for (int i = 0; i < 2; ++i) {
         auto k = std::to_string(i);
         c.acOn[i] = m->getSavedValue<bool>("acOn" + k, false); c.acHold[i] = m->getSavedValue<int>("acHold" + k, 4);

@@ -31,12 +31,16 @@ static ccColor4F acc(float a = 1.f, float mul = 1.f) {
 static ccColor4F accL(float a = 1.f) { return mix(acc(a), {1, 1, 1, a}, 0.5f); }
 static ccColor3B to3(ccColor4F c) { return {(GLubyte)(c.r * 255), (GLubyte)(c.g * 255), (GLubyte)(c.b * 255)}; }
 static ccColor3B tint3() { auto& c = cfg(); return {(GLubyte)c.tintR, (GLubyte)c.tintG, (GLubyte)c.tintB}; }
+static ccColor4F cardSurface(float a = 0.76f) {
+    auto t = tint3();
+    return {std::min(1.f, t.r / 255.f + 0.08f), std::min(1.f, t.g / 255.f + 0.08f), std::min(1.f, t.b / 255.f + 0.08f), a};
+}
 
 struct Preset { char const* n; int ar, ag, ab, tr, tg, tb; };
 static Preset const PRESETS[] = {
-    {"Emerald", 0, 217, 153, 13, 20, 28},   {"Ocean", 60, 170, 255, 10, 18, 32},  {"Violet", 170, 110, 255, 20, 14, 34},
+    {"Violet", 183, 140, 255, 37, 22, 56},  {"Ocean", 60, 170, 255, 10, 18, 32},  {"Bright Violet", 170, 110, 255, 20, 14, 34},
     {"Sunset", 255, 140, 60, 30, 16, 14},   {"Rose", 255, 90, 150, 30, 12, 22},   {"Gold", 255, 205, 60, 26, 22, 10},
-    {"Mono", 210, 215, 225, 18, 18, 20},
+    {"Mono", 210, 215, 225, 18, 18, 20},    {"Emerald", 0, 217, 153, 13, 20, 28},
 };
 static int const LABEL_COLORS[][3] = {
     {255, 255, 255}, {0, 217, 153}, {255, 90, 90}, {255, 160, 60}, {255, 225, 80},
@@ -96,7 +100,7 @@ static CCMenuItemSpriteExtra* makePill(std::string const& text, bool accent, std
     node->setContentSize({w, 20});
     auto d = CCDrawNode::create();
     if (paper()) rrect(d, {0, 0}, {w, 20}, 3, accent ? acc(1.f, 0.6f) : pGray(0.2f), 1.f, accent ? accL(0.9f) : pGray(0.42f));
-    else rrect(d, {0, 0}, {w, 20}, 5, accent ? acc(0.9f, 0.75f) : ccc4f(1, 1, 1, 0.10f), 1.f, accent ? accL(0.8f) : ccc4f(1, 1, 1, 0.14f));
+    else rrect(d, {0, 0}, {w, 20}, 3, accent ? acc(0.9f, 0.75f) : ccc4f(1, 1, 1, 0.10f), 1.f, accent ? accL(0.8f) : ccc4f(1, 1, 1, 0.14f));
     node->addChild(d);
     lbl->setPosition({w / 2, 10});
     node->addChild(lbl);
@@ -108,7 +112,7 @@ static CCMenuItemSpriteExtra* makeRound(char const* glyph, std::function<void()>
     node->setContentSize({20, 20});
     auto d = CCDrawNode::create();
     if (paper()) rrect(d, {0, 0}, {20, 20}, 3, pGray(0.2f), 1.f, pGray(0.42f));
-    else rrect(d, {0, 0}, {20, 20}, 5, ccc4f(1, 1, 1, 0.10f), 1.f, ccc4f(1, 1, 1, 0.14f));
+    else rrect(d, {0, 0}, {20, 20}, 3, ccc4f(1, 1, 1, 0.10f), 1.f, ccc4f(1, 1, 1, 0.14f));
     node->addChild(d);
     auto l = mkLabel(glyph);
     sc(l, .42f); l->setPosition({10, 10});
@@ -569,7 +573,7 @@ bool XyzMenu::init() {
     m_h = std::min(ws.height - 24.f, 280.f);
     m_cw = m_paper ? m_w - 20.f : m_w - SW - 30.f;
     m_ch = m_paper ? m_h - 34.f - 30.f - 8.f : m_h - 52.f;
-    m_glass = m_paper ? nullptr : glass::create({m_w, m_h}, 16.f);
+    m_glass = m_paper ? nullptr : glass::create({m_w, m_h}, 4.f);
     m_noElasticity = true;
     if (!Popup::init(m_w, m_h)) return false;
     if (m_bgSprite) m_bgSprite->setVisible(false);
@@ -587,7 +591,7 @@ bool XyzMenu::init() {
     } else {
         auto d = CCDrawNode::create();
         auto t = tint3();
-        rrect(d, {0, 0}, {m_w, m_h}, 16, {t.r / 255.f, t.g / 255.f, t.b / 255.f, 0.9f}, 1.2f, accL(0.5f));
+        rrect(d, {0, 0}, {m_w, m_h}, 4, {t.r / 255.f, t.g / 255.f, t.b / 255.f, 0.9f}, 1.2f, accL(0.5f));
         m_mainLayer->addChild(d, -1);
     }
 
@@ -655,7 +659,7 @@ void XyzMenu::buildHead() {
     }
     {
         auto bd = CCDrawNode::create();
-        rrect(bd, {1, m_h - 38.f}, {m_w - 2.f, 37.f}, 15, ccc4f(1, 1, 1, 0.05f), 0.f, {0, 0, 0, 0});
+        rrect(bd, {1, m_h - 38.f}, {m_w - 2.f, 37.f}, 4, cardSurface(0.55f), 0.f, {0, 0, 0, 0});
         bd->drawSegment({2, m_h - 38.f}, {m_w - 2.f, m_h - 38.f}, 0.5f, pm(ccc4f(1, 1, 1, 0.09f)));
         bd->drawSegment({SW + 14.f, 10.f}, {SW + 14.f, m_h - 42.f}, 0.5f, pm(ccc4f(1, 1, 1, 0.09f)));
         m_head->addChild(bd, -1);
@@ -774,7 +778,7 @@ void XyzMenu::buildSide() {
     }
     float h2 = m_h - 52.f;
     auto hl = CCDrawNode::create();
-    rrect(hl, {0, 0}, {SW + 4.f, 26}, 6, ccc4f(1, 1, 1, 0.09f), 0.f, {0, 0, 0, 0});
+    rrect(hl, {0, 0}, {SW + 4.f, 26}, 3, ccc4f(1, 1, 1, 0.09f), 0.f, {0, 0, 0, 0});
     rrect(hl, {SW + 1.f, 3}, {3, 20}, 1.5f, accL(1.f), 0.f, {0, 0, 0, 0});
     m_side->addChild(hl);
     m_hl = hl;
@@ -1356,7 +1360,7 @@ void XyzMenu::rebuild(bool animate) {
         } else {
             auto bg = CCDrawNode::create();
             if (m_paper) bg->drawSegment({0, -rowH / 2.f}, {cw, -rowH / 2.f}, 0.5f, pm(ccc4f(1, 1, 1, 0.07f)));
-            else rrect(bg, {0, -(h - 2.f) / 2.f}, {cw, h - 2.f}, 6, ccc4f(0, 0, 0, 0.26f), 1.f, ccc4f(1, 1, 1, 0.05f));
+            else rrect(bg, {0, -(h - 2.f) / 2.f}, {cw, h - 2.f}, 3, cardSurface(0.76f), 1.f, ccc4f(1, 1, 1, 0.05f));
             rm->addChild(bg, -1);
             switch (rw.k) {
             case Row::Toggle: {
@@ -1402,7 +1406,7 @@ void XyzMenu::rebuild(bool animate) {
                     auto box = CCNode::create();
                     box->setContentSize({bw, 20});
                     auto bd = CCDrawNode::create();
-                    rrect(bd, {0, 0}, {bw, 20}, 5, ccc4f(0, 0, 0, 0.30f), 1.f, ccc4f(1, 1, 1, 0.14f));
+                    rrect(bd, {0, 0}, {bw, 20}, 3, ccc4f(0, 0, 0, 0.30f), 1.f, ccc4f(1, 1, 1, 0.14f));
                     poly(bd, {{bw - 15.f, 12.f}, {bw - 7.f, 12.f}, {bw - 11.f, 7.5f}}, ccc4f(1, 1, 1, 0.85f));
                     box->addChild(bd);
                     auto cur = mkLabel(rw.get().c_str());
@@ -1431,7 +1435,7 @@ void XyzMenu::rebuild(bool animate) {
                     box->setContentSize({boxW, 20});
                     auto bd = CCDrawNode::create();
                     if (m_paper) rrect(bd, {0, 0}, {boxW, 20}, 3, pGray(0.15f), 1.f, pGray(0.38f));
-                    else rrect(bd, {0, 0}, {boxW, 20}, 5, ccc4f(0, 0, 0, 0.30f), 1.f, ccc4f(1, 1, 1, 0.14f));
+                    else rrect(bd, {0, 0}, {boxW, 20}, 3, ccc4f(0, 0, 0, 0.30f), 1.f, ccc4f(1, 1, 1, 0.14f));
                     box->addChild(bd);
                     auto title = rw.label; auto setv = rw.setv;
                     auto bi = CCMenuItemExt::createSpriteExtra(box, [title, get, setv, fix](auto) {
