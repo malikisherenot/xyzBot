@@ -6,7 +6,6 @@
 - Added the GD Small font
 - Redesigned the Glass UI: side tabs with an accent line, a header bar, the settings in two columns of cards, sliders for number settings and dropdowns for choices
 - Added a Discord button to the menu
-- Added the Installer as recommended
 - Removed the auto updater
 - Fixed the menu animation playing twice
 - Fixed the menu reopening when text changes

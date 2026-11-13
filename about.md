@@ -13,5 +13,5 @@
 - Autoclicker (per player), CPS counter
 - Autosave, Auto Exit, Block Inputs
 - Macro Editor and Backstep
-- Installer (recommended), Discord button
+- Optional xyzBot Installer integration, Discord button
 - Two UI styles: Glass and Paper
