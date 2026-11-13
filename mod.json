@@ -42,6 +42,7 @@
     },
     "itzmalikhere.xyzbot-installer": {
       "version": ">=0.13.0",
+      "required": false,
       "importance": "recommended"
     },
     "eclipse.ffmpeg-api": {
