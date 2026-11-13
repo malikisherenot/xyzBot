@@ -1,10 +1,20 @@
 # Changelog
 
-## v1.17.0-beta1
-- Added auto updater (shows the changelog, then downloads in-game)
+## v1.17.0-beta.2
+- Added the Macro Editor (Edit button in the Macros tab)
+- Added Backstep and a Back button to the frame stepper (now at the bottom right)
+- Added the GD Small font
+- Redesigned the Glass UI: side tabs with an accent line, a header bar, the settings in two columns of cards, sliders for number settings and dropdowns for choices
+- Added a Discord button to the menu
+- Added the Installer as recommended
+- Removed the auto updater
+- Fixed the menu animation playing twice
+- Fixed the menu reopening when text changes
+
+## v1.17.0
+- Added the auto updater (shows the changelog, then downloads in-game)
 - Added the Paper UI style (switch it in the Theme tab)
 - The menu font is saved per style (GD for Glass, Arial for Paper)
-- Back-stepping
 
 ## v1.16.1
 - Fixed the button not opening again after a transition
