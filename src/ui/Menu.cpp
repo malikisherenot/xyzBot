@@ -38,7 +38,7 @@ static ccColor4F cardSurface(float a = 0.76f) {
 
 struct Preset { char const* n; int ar, ag, ab, tr, tg, tb; };
 static Preset const PRESETS[] = {
-    {"Violet", 183, 140, 255, 37, 22, 56},  {"Ocean", 60, 170, 255, 10, 18, 32},  {"Bright Violet", 170, 110, 255, 20, 14, 34},
+    {"Plum", 220, 220, 230, 37, 22, 56},    {"Ocean", 60, 170, 255, 10, 18, 32},  {"Violet", 170, 110, 255, 20, 14, 34},
     {"Sunset", 255, 140, 60, 30, 16, 14},   {"Rose", 255, 90, 150, 30, 12, 22},   {"Gold", 255, 205, 60, 26, 22, 10},
     {"Mono", 210, 215, 225, 18, 18, 20},    {"Emerald", 0, 217, 153, 13, 20, 28},
 };
@@ -268,7 +268,7 @@ static std::string helpText(std::string const& k) {
         {"Codec", "Video encoder. Auto picks the best one your device offers."},
         {"End Tail (s)", "How many seconds keep recording after the level ends."},
         {"Include Song Audio", "Adds the level's song to the video afterwards. It starts at the beginning of the song, so it may be off for StartPos or practice runs."},
-        {"Menu Font", "Switches the menu text between GD's own font (old) and Arial (new)."},
+        {"Menu Font", "Auto follows the UI style's default font. You can override it with GD Big, Arial or GD Small."},
         {"Button In Levels", "Shows the floating button while you play. Turn off to hide it until you pause."},
     };
     auto it = H.find(k);
@@ -277,18 +277,18 @@ static std::string helpText(std::string const& k) {
 
 static CCMenuItemSpriteExtra* makeHelp(std::string title, std::string text) {
     auto node = CCNode::create();
-    node->setContentSize({16, 16});
+    node->setContentSize({14, 14});
     if (paper()) {
         auto l = mkLabel("(?)");
-        sc(l, .34f); l->setOpacity(130); l->setPosition({8, 8});
+        sc(l, .30f); l->setOpacity(130); l->setPosition({7, 7});
         node->addChild(l);
         return CCMenuItemExt::createSpriteExtra(node, [title, text](auto) { FLAlertLayer::create(title.c_str(), text, "OK")->show(); });
     }
     auto d = CCDrawNode::create();
-    disc(d, {8, 8}, 7.5f, ccc4f(1, 1, 1, 0.07f), 1.f, ccc4f(1, 1, 1, 0.3f), 20);
+    disc(d, {7, 7}, 6.f, ccc4f(1, 1, 1, 0.07f), 1.f, ccc4f(1, 1, 1, 0.3f), 20);
     node->addChild(d);
     auto l = mkLabel("?");
-    sc(l, .34f); l->setOpacity(110); l->setPosition({8, 8});
+    sc(l, .30f); l->setOpacity(110); l->setPosition({7, 7});
     node->addChild(l);
     return CCMenuItemExt::createSpriteExtra(node, [title, text](auto) { FLAlertLayer::create(title.c_str(), text, "OK")->show(); });
 }
@@ -981,8 +981,8 @@ void XyzMenu::rebuild(bool animate) {
             num("Anchor", [i] { static char const* a[] = {"Top Left", "Top Right", "Bottom Left", "Bottom Right"}; return std::string(a[std::clamp(labels::cfg(i).anchor, 0, 3)]); },
                 [i](int d) { auto& a = labels::cfg(i).anchor; a = (a + d + 4) % 4; labels::save(i); });
             opt(std::vector<std::string>{"Top Left", "Top Right", "Bottom Left", "Bottom Right"}, [i] { return std::clamp(labels::cfg(i).anchor, 0, 3); }, [i](int v) { labels::cfg(i).anchor = v; labels::save(i); });
-            num("Font", [i] { return std::string(labels::cfg(i).font == 0 ? "GD Big" : labels::cfg(i).font == 2 ? "GD Small" : "Arial"); }, [i](int) { auto& f = labels::cfg(i).font; f = (f + 1) % 3; labels::save(i); });
-            opt(std::vector<std::string>{"GD Big", "Arial", "GD Small"}, [i] { return std::clamp(labels::cfg(i).font, 0, 2); }, [i](int v) { labels::cfg(i).font = v; labels::save(i); });
+            num("Font", [i] { int f = labels::cfg(i).font; return std::string(f < 0 ? "Auto" : f == 0 ? "GD Big" : f == 2 ? "GD Small" : "Arial"); }, [i](int) { auto& f = labels::cfg(i).font; f = f >= 2 ? -1 : f + 1; labels::save(i); });
+            opt(std::vector<std::string>{"Auto", "GD Big", "Arial", "GD Small"}, [i] { int f = labels::cfg(i).font; return f < 0 ? 0 : std::clamp(f + 1, 1, 3); }, [i](int v) { labels::cfg(i).font = v == 0 ? -1 : v - 1; labels::save(i); });
             numS("Size", [i] { return fmt::format("{:.2f}", labels::cfg(i).scale); }, [i](int d) { auto& s = labels::cfg(i).scale; s = std::clamp(s + d * 0.05f, 0.1f, 2.f); labels::save(i); }, [i](double v) { labels::cfg(i).scale = std::clamp((float)v, 0.1f, 2.f); labels::save(i); });
             rng(0.1, 2.0, [i] { return (double)labels::cfg(i).scale; });
             numS("Opacity", [i] { return fmt::format("{:.2f}", labels::cfg(i).opacity); }, [i](int d) { auto& o = labels::cfg(i).opacity; o = std::clamp(o + d * 0.1f, 0.1f, 1.f); labels::save(i); }, [i](double v) { labels::cfg(i).opacity = std::clamp((float)v, 0.1f, 1.f); labels::save(i); });
@@ -1228,9 +1228,9 @@ void XyzMenu::rebuild(bool animate) {
         num("UI Style", [] { return std::string(cfg().uiStyle ? "Paper" : "Glass"); }, [this](int) {
             cfg().uiStyle = 1 - cfg().uiStyle; saveCfg();
             this->restyle(); });
-        num("Menu Font", [] { return std::string(menuFontNow() == 2 ? "GD Small" : menuFontNow() ? "Arial (new)" : "GD (old)"); }, [this](int) {
-            auto& f = cfg().uiStyle ? cfg().fontPaper : cfg().fontGlass;
-            f = (f + 1) % 3; saveCfg();
+        num("Menu Font", [] { auto& c = cfg(); int f = c.uiStyle ? c.fontPaper : c.fontGlass; return std::string(f < 0 ? "Auto" : f == 2 ? "GD Small" : f ? "Arial (new)" : "GD (old)"); }, [this](int) {
+            auto& c = cfg(); auto& f = c.uiStyle ? c.fontPaper : c.fontGlass;
+            f = f >= 2 ? -1 : f + 1; saveCfg();
             this->defer([this] { this->applyFont(); }); });
         sec("PRESETS");
         custom([this](CCMenu* menu, float y, float w) {
@@ -1366,11 +1366,11 @@ void XyzMenu::rebuild(bool animate) {
             case Row::Toggle: {
                 auto l = mkLabel(rw.label.c_str());
                 float lx = m_paper ? 38.f : 12.f;
-                fit(l, m_paper ? cw - (rw.gear.empty() ? 120.f : 150.f) : cw - 24.f - 48.f - (rw.gear.empty() ? 0.f : 28.f) - (rw.help.empty() ? 0.f : 14.f), .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({lx, 0});
+                fit(l, m_paper ? cw - (rw.gear.empty() ? 120.f : 150.f) : cw - 24.f - 48.f - (rw.gear.empty() ? 0.f : 28.f) - (rw.help.empty() ? 0.f : 20.f), .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({lx, 0});
                 rm->addChild(l);
                 if (!rw.help.empty()) {
                     auto hb = makeHelp(rw.label, rw.help);
-                    hb->setPosition({lx + l->getScaledContentSize().width + (m_paper ? 16.f : 13.f), 0}); rm->addChild(hb);
+                    hb->setPosition({lx + l->getScaledContentSize().width + (m_paper ? 15.f : 12.f), 0}); rm->addChild(hb);
                 }
                 auto sw = makeSwitch(rw.on, rw.setb);
                 sw->setPosition({m_paper ? 22.f : cw - 24.f, 0}); rm->addChild(sw);
@@ -1392,14 +1392,14 @@ void XyzMenu::rebuild(bool animate) {
                 float vw = sl ? 50.f : ((narrow && !rw.setv) ? 30.f : 70.f);
                 float boxW = sl ? 60.f : 74.f;
                 float minX = narrow ? cw - 80.f : cw - 122.f, plX = narrow ? cw - 14.f : cw - 26.f;
-                float labLim = !narrow ? cw - 215.f : (rw.setv ? cw - 99.f : cw - 100.f) - (rw.help.empty() ? 0.f : 14.f);
-                if (sl) labLim = cw - 12.f - 70.f - (rw.help.empty() ? 0.f : 14.f);
-                if (dd) labLim = cw - 12.f - 98.f - (rw.help.empty() ? 0.f : 14.f);
+                float labLim = !narrow ? cw - 215.f : (rw.setv ? cw - 99.f : cw - 100.f) - (rw.help.empty() ? 0.f : 20.f);
+                if (sl) labLim = cw - 12.f - 70.f - (rw.help.empty() ? 0.f : 20.f);
+                if (dd) labLim = cw - 12.f - 98.f - (rw.help.empty() ? 0.f : 20.f);
                 fit(l, labLim, .4f, .1f); l->setAnchorPoint({0, .5f}); l->setPosition({12, ty});
                 rm->addChild(l);
                 if (!rw.help.empty()) {
                     auto hb = makeHelp(rw.label, rw.help);
-                    hb->setPosition({12.f + l->getScaledContentSize().width + 13.f, ty}); rm->addChild(hb);
+                    hb->setPosition({12.f + l->getScaledContentSize().width + 12.f, ty}); rm->addChild(hb);
                 }
                 if (dd) {
                     float bw = 86.f;

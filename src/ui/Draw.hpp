@@ -11,11 +11,14 @@ inline std::string const& fontFile() {
     static std::string f = [] { using namespace geode::prelude; return std::string("arial-italic.fnt"_spr); }();
     return f;
 }
+inline int resolveFontStyle(int style) { return style < 0 ? xyz::menuFontNow() : style; }
 inline std::string fontOf(int style) {
+    style = resolveFontStyle(style);
     if (style == 2) return "chatFont.fnt";
     return (style != 1 || fontBad()) ? std::string("bigFont.fnt") : fontFile();
 }
 inline cocos2d::CCLabelBMFont* mkLabelStyle(char const* text, int style) {
+    style = resolveFontStyle(style);
     if (style == 2) {
         if (auto l = cocos2d::CCLabelBMFont::create(text, "chatFont.fnt")) { l->setTag(CHAT_TAG); return l; }
     } else if (style != 0 && !fontBad()) {
@@ -44,7 +47,7 @@ inline float fontKChat() {
     auto b = cocos2d::CCLabelBMFont::create("Ag", "bigFont.fnt");
     if (!a || !b) return 1.f;
     float ha = a->getContentSize().height, hb = b->getContentSize().height;
-    k = (ha > 0.f && hb > 0.f) ? std::clamp(hb / ha * 0.5f, 0.3f, 8.f) : 1.f;
+    k = (ha > 0.f && hb > 0.f) ? std::clamp(hb / ha * 0.8f, 0.3f, 8.f) : 1.f;
     return k;
 }
 inline float kOf(cocos2d::CCLabelBMFont* l) {
@@ -60,6 +63,7 @@ inline void fit(cocos2d::CCLabelBMFont* l, float width, float def, float minS) {
     l->setScale(s * k);
 }
 inline void setStyle(cocos2d::CCLabelBMFont* l, int style) {
+    style = resolveFontStyle(style);
     bool arial = style == 1 && !fontBad();
     l->setFntFile(fontOf(style).c_str());
     l->setTag(style == 2 ? CHAT_TAG : (arial ? ARIAL_TAG : 0));

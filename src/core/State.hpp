@@ -88,9 +88,9 @@ struct Cfg {
     bool stepBar = true;
     int stepN = 10;
     int holdRate = 1;
-    int uiStyle = 0, fontGlass = 0, fontPaper = 1;
+    int uiStyle = 0, fontGlass = -1, fontPaper = -1;
     int themeIdx = 0;
-    int accR = 183, accG = 140, accB = 255;
+    int accR = 220, accG = 220, accB = 230;
     int tintR = 37, tintG = 22, tintB = 56;
     bool acOn[2] = {false, false};
     int acHold[2] = {4, 4}, acRel[2] = {4, 4}, acClicks[2] = {1, 1};
@@ -179,7 +179,11 @@ void cpsPush(bool p2);
 int cpsNow(int p);
 
 Cfg& cfg();
-inline int menuFontNow() { auto& c = cfg(); return c.uiStyle ? c.fontPaper : c.fontGlass; }
+inline int menuFontNow() {
+    auto& c = cfg();
+    int style = c.uiStyle ? c.fontPaper : c.fontGlass;
+    return style < 0 ? (c.uiStyle ? 1 : 0) : style;
+}
 Rt& rt();
 void loadCfg();
 void saveCfg();

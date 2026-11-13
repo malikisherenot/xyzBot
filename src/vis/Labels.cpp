@@ -38,12 +38,14 @@ std::string_view orb(RingObject* r) {
 std::vector<Def>& defs() {
     static std::vector<Def> d;
     if (!d.empty()) return d;
+    auto mod = Mod::get();
+    bool resetFonts = !mod->getSavedValue<bool>("labelFontsAutoReset", false);
     auto add = [&](char const* id, char const* nm, std::function<std::string(CCLabelBMFont*)> f) {
         Def x; x.id = id; x.name = nm; x.fn = f;
         auto m = Mod::get(); std::string k = std::string("lbl_") + id;
         x.c.on = m->getSavedValue<bool>(k + "_on", false);
         x.c.anchor = m->getSavedValue<int>(k + "_anchor", 0);
-        x.c.font = m->getSavedValue<int>(k + "_font", 1);
+        x.c.font = resetFonts ? -1 : m->getSavedValue<int>(k + "_font", -1);
         x.c.opacity = (float)m->getSavedValue<double>(k + "_op", 1.0);
         x.c.scale = (float)m->getSavedValue<double>(k + "_sc", 0.7);
         x.c.r = m->getSavedValue<int>(k + "_cr", 255); x.c.g = m->getSavedValue<int>(k + "_cg", 255); x.c.b = m->getSavedValue<int>(k + "_cb", 255);
@@ -190,6 +192,10 @@ std::vector<Def>& defs() {
         {"prof_gain", "Profiler: tick capacity is how many ticks per second the game could run if ticks used the whole frame. Batching shows how much faster running many ticks per update call could make the tick part: sure counts camera and visibility only, likely adds effects, best case treats all remaining time as per-call. Turn the Profiler on in the TPS settings."},
     };
     for (auto& x : d) if (auto it = H.find(x.id); it != H.end()) x.help = it->second;
+    if (resetFonts) {
+        for (auto& x : d) mod->setSavedValue<int>("lbl_" + x.id + "_font", -1);
+        mod->setSavedValue<bool>("labelFontsAutoReset", true);
+    }
     return d;
 }
 }
