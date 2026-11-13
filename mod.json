@@ -24,6 +24,22 @@
       "arial-italic": {
         "path": "resources/arial-italic.ttf",
         "size": 40
+      },
+      "roboto-extralight": {
+        "path": "resources/Roboto-ExtraLight.ttf",
+        "size": 40
+      },
+      "roboto-semibold": {
+        "path": "resources/Roboto-SemiBold.ttf",
+        "size": 40
+      },
+      "roboto-bold": {
+        "path": "resources/Roboto-Bold.ttf",
+        "size": 40
+      },
+      "roboto-thinitalic": {
+        "path": "resources/Roboto-ThinItalic.ttf",
+        "size": 40
       }
     }
   },

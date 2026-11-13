@@ -1,5 +1,6 @@
 #include "MacroEditor.hpp"
 #include "../core/State.hpp"
+#include "Draw.hpp"
 #include <Geode/Geode.hpp>
 #include <Geode/ui/Popup.hpp>
 #include <Geode/ui/TextInput.hpp>
@@ -28,7 +29,8 @@ public:
         m_cb = std::move(cb);
         if (!Popup::init(250.f, 135.f)) return false;
         this->setTitle(title);
-        m_input = TextInput::create(180.f, hint, "bigFont.fnt");
+        auto inputFont = xyz::draw::fontOf(xyz::menuFontNow());
+        m_input = TextInput::create(180.f, hint, inputFont.c_str());
         if (numeric) m_input->setFilter("-0123456789");
         m_input->setString(cur);
         m_input->setPosition({125.f, 72.f});
@@ -112,8 +114,8 @@ class MacroEditor : public geode::Popup {
         m_body->addChild(menu);
 
         auto label = [&](std::string const& t, float x, float y, float sc, bool left, ccColor3B col = {255, 255, 255}) {
-            auto l = CCLabelBMFont::create(t.c_str(), "bigFont.fnt");
-            l->setScale(sc);
+            auto l = xyz::draw::mkLabel(t.c_str());
+            xyz::draw::sc(l, sc);
             l->setColor(col);
             l->setAnchorPoint({left ? 0.f : 0.5f, 0.5f});
             l->setPosition({x, y});
@@ -121,7 +123,8 @@ class MacroEditor : public geode::Popup {
             return l;
         };
         auto button = [&](std::string const& t, float x, float y, int width, std::function<void()> cb, float sc = 0.5f, char const* tex = "GJ_button_04.png") {
-            auto spr = ButtonSprite::create(t.c_str(), width, true, "bigFont.fnt", tex, 24.f, sc);
+            auto font = xyz::draw::fontOf(xyz::menuFontNow());
+            auto spr = ButtonSprite::create(t.c_str(), width, true, font.c_str(), tex, 24.f, sc);
             auto b = CCMenuItemExt::createSpriteExtra(spr, [cb = std::move(cb)](auto) { queueInMainThread([cb] { cb(); }); });
             b->setPosition({x, y});
             menu->addChild(b);

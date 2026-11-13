@@ -268,7 +268,7 @@ static std::string helpText(std::string const& k) {
         {"Codec", "Video encoder. Auto picks the best one your device offers."},
         {"End Tail (s)", "How many seconds keep recording after the level ends."},
         {"Include Song Audio", "Adds the level's song to the video afterwards. It starts at the beginning of the song, so it may be off for StartPos or practice runs."},
-        {"Menu Font", "Auto follows the UI style's default font. You can override it with GD Big, Arial or GD Small."},
+        {"Menu Font", "Auto uses Roboto ExtraLight. You can override the body font with GD Big, Arial or GD Small."},
         {"Button In Levels", "Shows the floating button while you play. Turn off to hide it until you pause."},
     };
     auto it = H.find(k);
@@ -366,7 +366,8 @@ public:
         m_cb = std::move(cb);
         if (!Popup::init(250.f, 135.f)) return false;
         this->setTitle(title);
-        m_input = TextInput::create(180.f, "Value", "bigFont.fnt");
+        auto inputFont = fontOf(menuFontNow());
+        m_input = TextInput::create(180.f, "Value", inputFont.c_str());
         m_input->setFilter("0123456789.-");
         m_input->setString(cur);
         m_input->setPosition({125.f, 72.f});
@@ -491,7 +492,8 @@ public:
         m_cb = std::move(cb);
         if (!Popup::init(250.f, 135.f)) return false;
         this->setTitle(title);
-        m_input = TextInput::create(180.f, "Type to search", "bigFont.fnt");
+        auto inputFont = fontOf(menuFontNow());
+        m_input = TextInput::create(180.f, "Type to search", inputFont.c_str());
         m_input->setString(cur);
         m_input->setPosition({125.f, 72.f});
         m_mainLayer->addChild(m_input);
@@ -631,13 +633,25 @@ bool XyzMenu::init() {
     return true;
 }
 
+static void addWeightedHeaderTitle(CCNode* parent, float width, float y, GLubyte opacity, float titleScale, float versionScale) {
+    auto title = mkRobotoLabel("xyzBot", RobotoFace::Bold);
+    auto versionText = fmt::format("v{}", Mod::get()->getVersion().toVString().substr(1));
+    auto version = mkRobotoLabel(versionText.c_str(), RobotoFace::ThinItalic);
+    sc(title, titleScale); sc(version, versionScale);
+    title->setOpacity(opacity); version->setOpacity(opacity);
+    title->setAnchorPoint({0, .5f}); version->setAnchorPoint({0, .5f});
+    float titleWidth = title->getScaledContentSize().width;
+    float versionWidth = version->getScaledContentSize().width;
+    float gap = 3.f, x = (width - titleWidth - gap - versionWidth) / 2.f;
+    title->setPosition({x, y}); version->setPosition({x + titleWidth + gap, y});
+    parent->addChild(title); parent->addChild(version);
+}
+
 void XyzMenu::buildHead() {
     m_head->removeAllChildren();
     if (m_paper) {
         m_arrow = nullptr;
-        auto title = mkLabel(fmt::format("xyzBot v{}", Mod::get()->getVersion().toVString().substr(1)).c_str());
-        sc(title, .42f); title->setPosition({m_w / 2, m_h - 17}); title->setOpacity(210);
-        m_head->addChild(title);
+        addWeightedHeaderTitle(m_head, m_w, m_h - 17, 210, .42f, .31f);
         auto top = CCMenu::create();
         top->setPosition({0, 0});
         m_head->addChild(top);
@@ -664,9 +678,7 @@ void XyzMenu::buildHead() {
         bd->drawSegment({SW + 14.f, 10.f}, {SW + 14.f, m_h - 42.f}, 0.5f, pm(ccc4f(1, 1, 1, 0.09f)));
         m_head->addChild(bd, -1);
     }
-    auto title = mkLabel(fmt::format("xyzBot v{}", Mod::get()->getVersion().toVString().substr(1)).c_str());
-    sc(title, .45f); title->setOpacity(225); title->setPosition({m_w / 2, m_h - 20});
-    m_head->addChild(title);
+    addWeightedHeaderTitle(m_head, m_w, m_h - 20, 225, .45f, .33f);
     auto top = CCMenu::create();
     top->setPosition({0, 0});
     m_head->addChild(top);
@@ -1342,7 +1354,7 @@ void XyzMenu::rebuild(bool animate) {
             tri->setPosition({14, secH / 2});
             tri->setRotation(rw.on ? -90.f : 0.f);
             node->addChild(tri);
-            auto l = mkLabel(rw.label.c_str());
+            auto l = mkRobotoLabel(rw.label.c_str(), RobotoFace::SemiBold);
             sc(l, .36f); l->setAnchorPoint({0, .5f}); l->setPosition({28, secH / 2});
             node->addChild(l);
             auto key = rw.help;
@@ -1354,7 +1366,7 @@ void XyzMenu::rebuild(bool animate) {
             it->setPosition({cw / 2, 0});
             rm->addChild(it);
         } else if (rw.k == Row::Section) {
-            auto l = mkLabel(rw.label.c_str());
+            auto l = mkRobotoLabel(rw.label.c_str(), RobotoFace::SemiBold);
             sc(l, .38f); l->setOpacity(235); l->setAnchorPoint({0, .5f}); l->setPosition({4, -2});
             rm->addChild(l);
         } else {

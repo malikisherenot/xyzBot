@@ -182,7 +182,7 @@ Cfg& cfg();
 inline int menuFontNow() {
     auto& c = cfg();
     int style = c.uiStyle ? c.fontPaper : c.fontGlass;
-    return style < 0 ? (c.uiStyle ? 1 : 0) : style;
+    return style < 0 ? 3 : style;
 }
 Rt& rt();
 void loadCfg();
