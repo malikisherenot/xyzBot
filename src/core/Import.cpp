@@ -596,6 +596,46 @@ bool importText(Macro& m, std::string const& s) {
     return true;
 }
 
+// .OMEGA v1 (Obot): "OMEGA", version, u16 TPS, varint count, then per input a varint frame delta and a flag byte.
+bool importOmega(Macro& m, std::vector<uint8_t> const& d) {
+    if (d.size() < 8 || std::memcmp(d.data(), "OMEGA", 5) != 0) { g_err = "Not an OMEGA macro"; return false; }
+    if (d[5] != 1) { g_err = "Unsupported OMEGA version"; return false; }
+    auto parse = [&](bool interleaved, Macro& out) {
+        Bytes in{d}; in.at = 6;
+        uint32_t tps = (uint32_t)in.u(2);
+        uint64_t count = in.leb();
+        if (in.fail || count > in.left() / 2) return false;
+        std::vector<uint64_t> deltas;
+        std::vector<uint8_t> flags;
+        deltas.reserve((size_t)count); flags.reserve((size_t)count);
+        if (interleaved) {
+            for (uint64_t i = 0; i < count; ++i) { deltas.push_back(in.leb()); flags.push_back((uint8_t)in.u(1)); }
+        } else {
+            for (uint64_t i = 0; i < count; ++i) deltas.push_back(in.leb());
+            for (uint64_t i = 0; i < count; ++i) flags.push_back((uint8_t)in.u(1));
+        }
+        if (in.fail || in.at != d.size()) return false;
+        out = Macro{};
+        out.tps = tps ? tps : 240;
+        uint64_t frame = 0;
+        for (size_t i = 0; i < deltas.size(); ++i) {
+            frame += deltas[i];
+            if (frame > 0x7fffffffULL) return false;
+            uint8_t fl = flags[i];
+            int btn = (fl >> 3) & 3;
+            if (btn == 0) btn = 1;
+            out.inputs.push_back({(uint32_t)frame, (uint8_t)btn, (fl & 1) != 0, (fl & 2) != 0});
+        }
+        return true;
+    };
+    Macro out;
+    if (!parse(true, out) && !parse(false, out)) { g_err = "Corrupt OMEGA macro"; return false; }
+    m = std::move(out);
+    finish(m);
+    if (m.inputs.empty()) { g_err = "Macro has no inputs"; return false; }
+    return true;
+}
+
 bool endsWith(std::string const& s, std::string const& e) { return s.size() >= e.size() && s.compare(s.size() - e.size(), e.size(), e) == 0; }
 }
 
@@ -604,7 +644,7 @@ std::string const& importError() { return g_err; }
 bool canImport(std::filesystem::path const& file) {
     auto n = file.filename().string();
     std::transform(n.begin(), n.end(), n.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-    for (char const* e : {".gdr", ".gdr.json", ".gdr2", ".json", ".xd", ".slc", ".tcm", ".echo", ".txt", ".csv"}) if (endsWith(n, e)) return true;
+    for (char const* e : {".gdr", ".gdr.json", ".gdr2", ".json", ".xd", ".slc", ".tcm", ".echo", ".omega", ".txt", ".csv"}) if (endsWith(n, e)) return true;
     return false;
 }
 
@@ -620,6 +660,7 @@ bool importMacro(Macro& m, std::filesystem::path const& file) {
         if (endsWith(n, ".slc")) return importSlc(m, data);
         if (endsWith(n, ".tcm")) return importTcbot(m, data) || (g_err = g_err.empty() ? "Not a TCBot macro" : g_err, false);
         if (endsWith(n, ".echo") && !endsWith(n, ".echo.json")) return importLegacyEcho(m, data);
+        if (endsWith(n, ".omega")) return importOmega(m, data);
         if (endsWith(n, ".gdr2")) return importGdr2(m, data);
         if (endsWith(n, ".gdr") || endsWith(n, ".json")) return importGdr(m, data);
         if (endsWith(n, ".txt") || endsWith(n, ".csv")) return importText(m, std::string(data.begin(), data.end()));
