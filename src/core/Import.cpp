@@ -644,7 +644,7 @@ std::string const& importError() { return g_err; }
 bool canImport(std::filesystem::path const& file) {
     auto n = file.filename().string();
     std::transform(n.begin(), n.end(), n.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-    for (char const* e : {".gdr", ".gdr.json", ".gdr2", ".json", ".xd", ".slc", ".tcm", ".echo", ".omega", ".txt", ".csv"}) if (endsWith(n, e)) return true;
+    for (char const* e : {".gdr", ".gdr.json", ".gdr2", ".json", ".xd", ".slc", ".tcm", ".echo", ".omega", ".lqd", ".txt", ".csv"}) if (endsWith(n, e)) return true;
     return false;
 }
 
@@ -660,7 +660,8 @@ bool importMacro(Macro& m, std::filesystem::path const& file) {
         if (endsWith(n, ".slc")) return importSlc(m, data);
         if (endsWith(n, ".tcm")) return importTcbot(m, data) || (g_err = g_err.empty() ? "Not a TCBot macro" : g_err, false);
         if (endsWith(n, ".echo") && !endsWith(n, ".echo.json")) return importLegacyEcho(m, data);
-        if (endsWith(n, ".omega")) return importOmega(m, data);
+        // `.lqd` is the preferred extension; keep `.omega` for existing exports.
+        if (endsWith(n, ".omega") || endsWith(n, ".lqd")) return importOmega(m, data);
         if (endsWith(n, ".gdr2")) return importGdr2(m, data);
         if (endsWith(n, ".gdr") || endsWith(n, ".json")) return importGdr(m, data);
         if (endsWith(n, ".txt") || endsWith(n, ".csv")) return importText(m, std::string(data.begin(), data.end()));
