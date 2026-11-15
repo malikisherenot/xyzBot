@@ -1,4 +1,5 @@
 build/
 .vs/
 .idea/
+.vscode/
 *.geode

@@ -1,7 +1,7 @@
 #include "Menu.hpp"
 #include "Draw.hpp"
 #include "../core/State.hpp"
-#include <Geode/modify/CCScheduler.hpp>
+#include <Geode/loader/GameEvent.hpp>
 #include "StepBar.hpp"
 #include <Geode/ui/OverlayManager.hpp>
 
@@ -161,20 +161,12 @@ public:
 
 static Ref<XyzFloatButton> s_btn;
 
-class $modify(XyzFloatSched, CCScheduler) {
-    void update(float dt) {
-        CCScheduler::update(dt);
-        static int frames = 0;
-        if (++frames < 5) return;
-        auto scene = CCDirector::get()->getRunningScene();
-        if (!scene) return;
-        auto ov = OverlayManager::get();
-        if (!ov) return;
-        xyz::ensureStepBar();
-        if (!s_btn) s_btn = XyzFloatButton::create();
-        if (s_btn && s_btn->getParent() != ov) {
-            if (s_btn->getParent()) s_btn->removeFromParent();
-            ov->addChild(s_btn, 9999);
-        }
-    }
-};
+// The overlay manager keeps its children across scene changes, so the button and the step bar are
+// attached once, when the game has finished loading, instead of being re-checked every frame.
+$on_game(Loaded) {
+    auto overlay = OverlayManager::get();
+    if (!overlay) return;
+    s_btn = XyzFloatButton::create();
+    if (s_btn) overlay->addChild(s_btn, 9999);
+    xyz::ensureStepBar();
+}

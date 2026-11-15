@@ -151,7 +151,7 @@ std::vector<std::string> listMacros() {
     std::vector<std::string> out;
     std::error_code ec;
     for (auto& e : std::filesystem::directory_iterator(macroDir(), ec))
-        if (e.path().extension() == ".xyz") out.push_back(e.path().stem().string());
+        if (e.path().extension() == ".xyz") out.push_back(utils::string::pathToString(e.path().stem()));
     std::sort(out.begin(), out.end());
     return out;
 }

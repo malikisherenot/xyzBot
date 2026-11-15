@@ -252,7 +252,8 @@ std::string startRender() {
 
     std::string name = macroFileName();
     g_out = renderDir() / (name + ".mp4");
-    for (int n = 1; fs::exists(g_out) && n < 1000; ++n) g_out = renderDir() / (name + " (" + std::to_string(n) + ").mp4");
+    std::error_code existsEc;
+    for (int n = 1; fs::exists(g_out, existsEc) && n < 1000; ++n) g_out = renderDir() / (name + " (" + std::to_string(n) + ").mp4");
 
     static char const* CODECS[] = {"", "libx264", "h264_mediacodec", "libopenh264", "mpeg4"};
     auto available = ffmpeg::events::Recorder::getAvailableCodecs();
@@ -338,18 +339,16 @@ void renderStop(bool mixAudio) {
         Notification::create("Render stopped: no frames were captured", NotificationIcon::Error)->show();
         return;
     }
-    if (mixAudio && cfg().renderAudio && !g_song.empty() && fs::exists(g_song)) {
+    if (std::error_code songEc; mixAudio && cfg().renderAudio && !g_song.empty() && fs::exists(g_song, songEc)) {
         auto tmp = g_out; tmp.replace_extension(".mux.mp4");
         std::string failed;
-        try {
-            auto res = ffmpeg::events::AudioMixer::mixVideoAudio(g_out, g_song, tmp);
-            if (res.isErr()) failed = res.unwrapErr();
-        } catch (std::exception const& e) { failed = e.what(); }
+        auto res = ffmpeg::events::AudioMixer::mixVideoAudio(g_out, g_song, tmp);
+        if (res.isErr()) failed = res.unwrapErr();
         std::error_code ec;
         if (failed.empty()) { fs::remove(g_out, ec); fs::rename(tmp, g_out, ec); }
         else { fs::remove(tmp, ec); Notification::create("Rendered without audio: " + failed, NotificationIcon::Warning)->show(); }
     }
-    Notification::create("Render saved: " + g_out.filename().string(), NotificationIcon::Success)->show();
+    Notification::create("Render saved: " + utils::string::pathToString(g_out.filename()), NotificationIcon::Success)->show();
 #endif
 }
 

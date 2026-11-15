@@ -197,7 +197,7 @@ static std::string helpText(std::string const& k) {
         {"Labels Enabled", "Shows or hides every on-screen label."},
         {"Enabled", "Shows or hides this label."},
         {"Anchor", "Which corner of the screen the label sits in."},
-        {"Font", "Arial or the game's own font."},
+        {"Font", "An italic sans font or the game's own fonts."},
         {"Size", "How large the label is."},
         {"Opacity", "How see-through the label is."},
         {"Red", "Red amount, from 0 to 255."}, {"Green", "Green amount, from 0 to 255."}, {"Blue", "Blue amount, from 0 to 255."},
@@ -264,7 +264,7 @@ static std::string helpText(std::string const& k) {
         {"Codec", "Video encoder. Auto picks the best one your device offers."},
         {"End Tail (s)", "How many seconds keep recording after the level ends."},
         {"Include Song Audio", "Adds the level's song to the video afterwards. It starts at the beginning of the song, so it may be off for StartPos or practice runs."},
-        {"Menu Font", "Switches the menu text between GD's own font (old) and Arial (new)."},
+        {"Menu Font", "Switches the menu text between GD's own font (old) and an italic sans font (new)."},
         {"Button In Levels", "Shows the floating button while you play. Turn off to hide it until you pause."},
     };
     auto it = H.find(k);
@@ -610,9 +610,9 @@ bool XyzMenu::init() {
         auto dm = CCMenu::create();
         dm->setPosition({0, 0});
         m_mainLayer->addChild(dm, 20);
-        auto db = makePill("Discord", false, [] {
-            geode::createQuickPopup("Discord", "Join the discord server to report bugs & suggestions?", "No", "Join", [](auto*, bool join) {
-                if (join) geode::utils::web::openLinkInBrowser("https://discord.gg/Pu5GPAQr5");
+        auto db = makePill("Report a bug", false, [] {
+            geode::createQuickPopup("Report a bug", "Open the xyzBot issue tracker on GitHub?", "No", "Open", [](auto*, bool open) {
+                if (open) geode::utils::web::openLinkInBrowser("https://github.com/malikisherenot/xyzBot/issues");
             });
         });
         db->setPosition({ws.width - 10.f - db->getContentWidth() / 2.f - (ws.width - m_w) / 2.f, 18.f - (ws.height - m_h) / 2.f});
@@ -977,8 +977,8 @@ void XyzMenu::rebuild(bool animate) {
             num("Anchor", [i] { static char const* a[] = {"Top Left", "Top Right", "Bottom Left", "Bottom Right"}; return std::string(a[std::clamp(labels::cfg(i).anchor, 0, 3)]); },
                 [i](int d) { auto& a = labels::cfg(i).anchor; a = (a + d + 4) % 4; labels::save(i); });
             opt(std::vector<std::string>{"Top Left", "Top Right", "Bottom Left", "Bottom Right"}, [i] { return std::clamp(labels::cfg(i).anchor, 0, 3); }, [i](int v) { labels::cfg(i).anchor = v; labels::save(i); });
-            num("Font", [i] { return std::string(labels::cfg(i).font == 0 ? "GD Big" : labels::cfg(i).font == 2 ? "GD Small" : "Arial"); }, [i](int) { auto& f = labels::cfg(i).font; f = (f + 1) % 3; labels::save(i); });
-            opt(std::vector<std::string>{"GD Big", "Arial", "GD Small"}, [i] { return std::clamp(labels::cfg(i).font, 0, 2); }, [i](int v) { labels::cfg(i).font = v; labels::save(i); });
+            num("Font", [i] { return std::string(labels::cfg(i).font == 0 ? "GD Big" : labels::cfg(i).font == 2 ? "GD Small" : "Italic"); }, [i](int) { auto& f = labels::cfg(i).font; f = (f + 1) % 3; labels::save(i); });
+            opt(std::vector<std::string>{"GD Big", "Italic", "GD Small"}, [i] { return std::clamp(labels::cfg(i).font, 0, 2); }, [i](int v) { labels::cfg(i).font = v; labels::save(i); });
             numS("Size", [i] { return fmt::format("{:.2f}", labels::cfg(i).scale); }, [i](int d) { auto& s = labels::cfg(i).scale; s = std::clamp(s + d * 0.05f, 0.1f, 2.f); labels::save(i); }, [i](double v) { labels::cfg(i).scale = std::clamp((float)v, 0.1f, 2.f); labels::save(i); });
             rng(0.1, 2.0, [i] { return (double)labels::cfg(i).scale; });
             numS("Opacity", [i] { return fmt::format("{:.2f}", labels::cfg(i).opacity); }, [i](int d) { auto& o = labels::cfg(i).opacity; o = std::clamp(o + d * 0.1f, 0.1f, 1.f); labels::save(i); }, [i](double v) { labels::cfg(i).opacity = std::clamp((float)v, 0.1f, 1.f); labels::save(i); });
@@ -1019,13 +1019,6 @@ void XyzMenu::rebuild(bool animate) {
         sec("AUTOMATION");
         tog("Autosave While Recording", c.autosave, [](bool v) { cfg().autosave = v; saveCfg(); }, "autosave");
         tog("Auto Exit On Finish", c.autoExit, [](bool v) { cfg().autoExit = v; saveCfg(); });
-        sec("INSTALLER");
-        {
-            bool have = geode::Loader::get()->isModLoaded("itzmalikhere.xyzbot-installer");
-            txt("Recommended: the xyzBot Installer installs xyzBot and any older version from inside the game.");
-            if (have) txt("The installer is installed. Open it with the button in the main menu.");
-            else pills({{"Get Installer", [] { geode::utils::web::openLinkInBrowser("https://malikisherenot.github.io/xyzBot/"); }}});
-        }
         break;
     }
     case 1:
@@ -1067,10 +1060,10 @@ void XyzMenu::rebuild(bool animate) {
                     int n = 0, bad = 0; std::string why; std::error_code ec;
                     for (auto& e : std::filesystem::directory_iterator(macroDir(), ec)) {
                         if (!canImport(e.path())) continue;
-                        auto name = e.path().filename().string();
+                        auto name = utils::string::pathToString(e.path().filename());
                         auto low = name; std::transform(low.begin(), low.end(), low.begin(), [](unsigned char ch) { return (char)std::tolower(ch); });
                         if (low.size() > 9 && low.compare(low.size() - 9, 9, ".gdr.json") == 0) name.resize(name.size() - 9);
-                        else name = e.path().stem().string();
+                        else name = utils::string::pathToString(e.path().stem());
                         Macro m;
                         if (importMacro(m, e.path()) && saveMacro(m, name)) n++;
                         else { bad++; why = importError(); }
@@ -1224,7 +1217,7 @@ void XyzMenu::rebuild(bool animate) {
         num("UI Style", [] { return std::string(cfg().uiStyle ? "Paper" : "Glass"); }, [this](int) {
             cfg().uiStyle = 1 - cfg().uiStyle; saveCfg();
             this->restyle(); });
-        num("Menu Font", [] { return std::string(menuFontNow() == 2 ? "GD Small" : menuFontNow() ? "Arial (new)" : "GD (old)"); }, [this](int) {
+        num("Menu Font", [] { return std::string(menuFontNow() == 2 ? "GD Small" : menuFontNow() ? "Italic (new)" : "GD (old)"); }, [this](int) {
             auto& f = cfg().uiStyle ? cfg().fontPaper : cfg().fontGlass;
             f = (f + 1) % 3; saveCfg();
             this->defer([this] { this->applyFont(); }); });

@@ -1,4 +1,4 @@
-// Showcase / rendering helpers ported from Scarlet Utils (own implementation).
+// Showcase / rendering helpers (no death effect, no effects, hide end screen, fades). Behaviour modelled on Scarlet Utils; code written for xyzBot.
 #include "../core/State.hpp"
 #include <Geode/modify/PlayerObject.hpp>
 #include <Geode/modify/RingObject.hpp>

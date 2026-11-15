@@ -5,10 +5,10 @@
 #include <algorithm>
 
 namespace xyz::draw {
-constexpr int ARIAL_TAG = 0x5A7, CHAT_TAG = 0x5A8;
+constexpr int PAPER_TAG = 0x5A7, CHAT_TAG = 0x5A8;
 inline bool& fontBad() { static bool b = false; return b; }
 inline std::string const& fontFile() {
-    static std::string f = [] { using namespace geode::prelude; return std::string("arial-italic.fnt"_spr); }();
+    static std::string f = [] { using namespace geode::prelude; return std::string("paper-italic.fnt"_spr); }();
     return f;
 }
 inline std::string fontOf(int style) {
@@ -19,7 +19,7 @@ inline cocos2d::CCLabelBMFont* mkLabelStyle(char const* text, int style) {
     if (style == 2) {
         if (auto l = cocos2d::CCLabelBMFont::create(text, "chatFont.fnt")) { l->setTag(CHAT_TAG); return l; }
     } else if (style != 0 && !fontBad()) {
-        if (auto l = cocos2d::CCLabelBMFont::create(text, fontFile().c_str())) { l->setTag(ARIAL_TAG); return l; }
+        if (auto l = cocos2d::CCLabelBMFont::create(text, fontFile().c_str())) { l->setTag(PAPER_TAG); return l; }
         fontBad() = true;
     }
     return cocos2d::CCLabelBMFont::create(text, "bigFont.fnt");
@@ -49,7 +49,7 @@ inline float fontKChat() {
 }
 inline float kOf(cocos2d::CCLabelBMFont* l) {
     if (!l) return 1.f;
-    if (l->getTag() == ARIAL_TAG) return fontK();
+    if (l->getTag() == PAPER_TAG) return fontK();
     if (l->getTag() == CHAT_TAG) return fontKChat();
     return 1.f;
 }
@@ -60,9 +60,9 @@ inline void fit(cocos2d::CCLabelBMFont* l, float width, float def, float minS) {
     l->setScale(s * k);
 }
 inline void setStyle(cocos2d::CCLabelBMFont* l, int style) {
-    bool arial = style == 1 && !fontBad();
+    bool paper = style == 1 && !fontBad();
     l->setFntFile(fontOf(style).c_str());
-    l->setTag(style == 2 ? CHAT_TAG : (arial ? ARIAL_TAG : 0));
+    l->setTag(style == 2 ? CHAT_TAG : (paper ? PAPER_TAG : 0));
 }
 
 inline cocos2d::ccColor4F pm(cocos2d::ccColor4F c) { return {c.r * c.a, c.g * c.a, c.b * c.a, c.a}; }

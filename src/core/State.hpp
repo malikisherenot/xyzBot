@@ -56,7 +56,7 @@ struct Cfg {
     bool legacyShip = false;
     int legacyShipPct = 6;
     bool btnInLevel = true;
-    // macro tools and rotation fix (ported from Echo, GPL-3.0)
+    // Macro tools and the rotation fix (adapted from Echo, GPL-3.0)
     bool fixRotation = false;
     bool waveDragFix = false;
     int renderW = 1280, renderFps = 60, renderBitrate = 12, renderCodec = 0, renderTail = 2;
@@ -69,7 +69,7 @@ struct Cfg {
     bool swapInput = false, inverse[2] = {false, false};
     bool seqOn = false, seqRandom = false;
     std::vector<std::string> seq;
-    // ported from Scarlet Utils (own implementation)
+    // Showcase and click-assist options (modelled on Scarlet Utils)
     bool noDeathEffect = false, noEffect = false, hideEndscreen = false, hideNewBest = false;
     bool optStacked = false, restartFirst = false;
     bool fadeLevel = false, fadeAudio = false;

@@ -442,7 +442,9 @@ bool importEchoJson(Macro& m, json const& j) {
     m = Macro{};
     m.tps = (uint32_t)std::max(1L, std::lround(numOr(j, "fps", 240.0)));
     bool debug = boolOr(j, "debug", false);
-    for (auto& i : j["inputs"]) {
+    auto inputs = j.find("inputs");
+    if (inputs == j.end() || !inputs->is_array()) { g_err = "Macro has no inputs"; return false; }
+    for (auto& i : *inputs) {
         if (!i.is_object()) continue;
         int btn = 1;
         if (auto it = i.find("button"); it != i.end()) {
@@ -583,7 +585,13 @@ bool importText(Macro& m, std::string const& s) {
     std::istringstream in(s); std::string line;
     while (std::getline(in, line)) {
         if (line.empty() || line[0] == '#') continue;
-        if (line.rfind("tps=", 0) == 0) { m.tps = (uint32_t)std::max(1UL, std::stoul(line.substr(4))); continue; }
+        if (line.rfind("tps=", 0) == 0) {
+            auto value = line.substr(4);
+            auto last = value.find_last_not_of(" \t\r");
+            value.erase(last == std::string::npos ? 0 : last + 1);
+            m.tps = std::max<uint32_t>(1, utils::numFromString<uint32_t>(value).unwrapOr(240));
+            continue;
+        }
         std::replace(line.begin(), line.end(), ',', ' ');
         std::istringstream ls(line); uint32_t t; int b, d, p = 0;
         if (!(ls >> t >> b >> d)) continue;
@@ -602,7 +610,7 @@ bool endsWith(std::string const& s, std::string const& e) { return s.size() >= e
 std::string const& importError() { return g_err; }
 
 bool canImport(std::filesystem::path const& file) {
-    auto n = file.filename().string();
+    auto n = utils::string::pathToString(file.filename());
     std::transform(n.begin(), n.end(), n.begin(), [](unsigned char c) { return (char)std::tolower(c); });
     for (char const* e : {".gdr", ".gdr.json", ".gdr2", ".json", ".xd", ".slc", ".tcm", ".echo", ".txt", ".csv"}) if (endsWith(n, e)) return true;
     return false;
@@ -613,7 +621,7 @@ bool importMacro(Macro& m, std::filesystem::path const& file) {
     std::ifstream f(file, std::ios::binary);
     if (!f) { g_err = "Cannot open file"; return false; }
     std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)), {});
-    auto n = file.filename().string();
+    auto n = utils::string::pathToString(file.filename());
     std::transform(n.begin(), n.end(), n.begin(), [](unsigned char c) { return (char)std::tolower(c); });
     try {
         if (endsWith(n, ".xd")) return importXD(m, std::string(data.begin(), data.end()));

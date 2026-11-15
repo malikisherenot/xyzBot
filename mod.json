@@ -6,23 +6,21 @@
     "mac": "2.2081",
     "ios": "2.2081"
   },
-  "version": "v1.17.0-beta.2",
+  "version": "v1.18.0",
   "id": "itzmalikhere.xyzbot",
   "name": "xyzBot",
   "developer": "itzmalikhere",
-  "description": "Maximalism bot: accurate tick replay, xdBot-style TPS, hitboxes and trajectory.",
+  "description": "Macro bot that records and replays inputs, with a high-TPS physics loop, frame stepper, hitboxes, trajectory preview, macro import and video rendering.",
+  "repository": "https://github.com/malikisherenot/xyzBot",
   "tags": [
     "cheat",
     "gameplay",
     "utility"
   ],
   "resources": {
-    "files": [
-      "resources/*.png"
-    ],
     "fonts": {
-      "arial-italic": {
-        "path": "resources/arial-italic.ttf",
+      "paper-italic": {
+        "path": "resources/paper-italic.ttf",
         "size": 40
       }
     }
@@ -32,17 +30,13 @@
       "type": "bool",
       "name": "Floating Button",
       "default": true,
-      "description": "Draggable button that opens the menu."
+      "description": "Show a draggable button that opens the xyzBot menu. The menu can also be opened with F6."
     }
   },
   "dependencies": {
-    "geode.node-ids": {
-      "version": ">=1.0.0",
-      "importance": "required"
-    },
     "eclipse.ffmpeg-api": {
       "version": ">=v2.0.0",
-      "required": false,
+      "importance": "suggested",
       "platforms": ["android"]
     }
   }
