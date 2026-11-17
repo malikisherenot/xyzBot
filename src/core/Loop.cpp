@@ -59,7 +59,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
                     for (uint32_t i = 0; i < k; ++i) {
                         r.subTick = i + 1 < k;
                         xyz::backstepFeed(pl, r.tick);
-                        XYZ_TIMED(P_UPD, GJBaseGameLayer::update((float)step));
+                        XYZ_TIMED(P_UPD, GJBaseGameLayer::update((float)(1.0 / curTps())));
                     }
                     r.subTick = false;
                     xyz::backstepFeed(pl, r.tick);
@@ -75,7 +75,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
             for (int i = 0; i < n; ++i) {
                 r.subTick = i + 1 < n;
                 xyz::backstepSave(pl, n);
-                XYZ_TIMED(P_UPD, GJBaseGameLayer::update((float)step));
+                XYZ_TIMED(P_UPD, GJBaseGameLayer::update((float)(1.0 / curTps())));
             }
             r.subTick = false;
             vis::refresh(pl);
@@ -90,8 +90,32 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
             }
         }
 
-        if ((tps == 240.0 && !pdActive(pl)) || m_resumeTimer > 0) {
+        bool dyn = xyz::tpsDynamic();
+        if ((tps == 240.0 && !c.lockDelta && !dyn && !pdActive(pl)) || m_resumeTimer > 0) {
             XYZ_TIMED(P_UPD, GJBaseGameLayer::update(dt));
+            vis::refresh(pl);
+            return;
+        }
+
+        if (dyn) {
+            // the macro changes TPS while it plays: read the TPS again before every tick
+            double acc = r.leftover + dt;
+            auto t0 = std::chrono::steady_clock::now();
+            double budget = xyz::isRendering() ? 1e12 : std::max(1.0, (double)c.budgetMs);
+            int64_t done = 0;
+            bool cut = false;
+            r.frozen = false;
+            while (true) {
+                double st = 1.0 / curTps();
+                if ((int64_t)(acc / st) < 1) break;
+                r.subTick = (int64_t)((acc - st) / st) >= 1;
+                XYZ_TIMED(P_UPD, GJBaseGameLayer::update((float)st));
+                acc -= st; ++done;
+                if (!xyz::tpsDynamic()) break;
+                if ((done & 7) == 0 && std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() > budget) { cut = true; break; }
+            }
+            r.subTick = false;
+            r.leftover = cut ? 0.0 : acc;
             vis::refresh(pl);
             return;
         }
@@ -120,7 +144,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
         using namespace xyz;
         auto pl = xyz::activeLayer();
         double tps = curTps();
-        if ((tps == 240.0 && !(pl && pdActive(pl))) || !pl || (GJBaseGameLayer*)pl != this || rt().simulating)
+        if ((tps == 240.0 && !xyz::cfg().lockDelta && !xyz::tpsDynamic() && !(pl && pdActive(pl))) || !pl || (GJBaseGameLayer*)pl != this || rt().simulating)
             return GJBaseGameLayer::getModifiedDelta(dt);
         double step = 1.0 / tps;
         double warp = std::min(1.0, (double)m_gameState.m_timeWarp);

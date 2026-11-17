@@ -1,4 +1,6 @@
 #include "State.hpp"
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <fstream>
 
@@ -74,16 +76,60 @@ struct Hist { int32_t a[4][2] = {}; };
 int32_t predict(Hist const& h, int c) { return (int32_t)((uint32_t)h.a[c][0] * 2u - (uint32_t)h.a[c][1]); }
 void push(Hist& h, int c, int32_t v) { h.a[c][1] = h.a[c][0]; h.a[c][0] = v; }
 
-Buf encode(Macro const& m) {
+// Anchor Fixes: values are integers on a fixed grid, predicted by straight-line extrapolation over ticks.
+// Integer maths only, so every platform decodes exactly the same numbers.
+struct AHist { int64_t q[2] = {0, 0}; int64_t t[2] = {0, 0}; int n = 0; };
+int64_t aPredict(AHist const& h, int64_t t) {
+    if (h.n == 0) return 0;
+    if (h.n == 1 || h.t[0] == h.t[1]) return h.q[0];
+    int64_t dq = std::clamp<int64_t>(h.q[0] - h.q[1], -(1ll << 40), 1ll << 40);
+    int64_t dt = std::clamp<int64_t>(t - h.t[0], 0, 1ll << 20);
+    int64_t span = h.t[0] - h.t[1];
+    return h.q[0] + (dq * dt) / span;
+}
+void aPush(AHist& h, int64_t q, int64_t t) {
+    h.q[1] = h.q[0]; h.t[1] = h.t[0]; h.q[0] = q; h.t[0] = t;
+    if (h.n < 2) ++h.n;
+}
+int64_t toQ(float v, int c) { return (int64_t)std::llround((double)v * ANCHOR_SCALE[c]); }
+float fromQ(int64_t q, int c) { return (float)((double)q / ANCHOR_SCALE[c]); }
+bool anchorable(Macro const& m) {
+    if (m.anchor == 0) return false;
+    for (auto& f : m.fixes) if (std::isnan(f.x) || std::isnan(f.y) || std::isnan(f.rot) || std::isnan(f.yv)) return false;
+    return true;
+}
+
+Buf encode(Macro const& m, bool anc, bool tc) {
     Buf b;
     putV(b, m.tps); putV(b, m.ticks); putV(b, m.seed); putV(b, zz(m.levelId));
     putV(b, (uint32_t)bitsOf(m.startX));
+    if (anc || tc) {
+        putV(b, (anc ? 1u : 0u) | (tc ? 2u : 0u));
+        if (anc) putV(b, m.anchor);
+        if (tc) {
+            putV(b, m.tpsChanges.size());
+            uint32_t prev = 0;
+            for (auto& c : m.tpsChanges) { putV(b, c.tick - prev); putV(b, c.tps); prev = c.tick; }
+        }
+    }
     putV(b, m.inputs.size()); putV(b, m.fixes.size());
     uint32_t last = 0;
     for (auto& i : m.inputs) { putV(b, i.tick - last); last = i.tick; }
     for (auto& i : m.inputs) b.push_back((uint8_t)(((i.button - 1) & 3) | (i.down << 2) | (i.p2 << 3)));
     last = 0;
     for (auto& f : m.fixes) { putV(b, ((uint64_t)(f.tick - last) << 1) | f.p2); last = f.tick; }
+    if (anc) {
+        for (int c = 0; c < 4; ++c) {
+            AHist hc[2];
+            for (auto& f : m.fixes) {
+                float v[4] = {f.x, f.y, f.rot, f.yv};
+                int64_t q = toQ(v[c], c);
+                putV(b, zz(q - aPredict(hc[f.p2], f.tick)));
+                aPush(hc[f.p2], q, f.tick);
+            }
+        }
+        return b;
+    }
     for (int c = 0; c < 4; ++c) {
         Hist hc[2];
         for (auto& f : m.fixes) {
@@ -96,11 +142,24 @@ Buf encode(Macro const& m) {
     return b;
 }
 
-bool decode(Buf const& raw, Macro& m, bool v3) {
+bool decode(Buf const& raw, Macro& m, int ver) {
+    bool v3 = ver >= 3, anc = false;
     Rd r{raw.data(), raw.data() + raw.size()};
     m = Macro{};
     m.tps = (uint32_t)r.v(); m.ticks = (uint32_t)r.v(); m.seed = r.v(); m.levelId = unzz(r.v());
     if (v3) m.startX = floatOf((int32_t)(uint32_t)r.v());
+    if (ver == 4) { m.anchor = (uint32_t)r.v(); anc = m.anchor > 0; }
+    if (ver >= 5) {
+        uint64_t fl = r.v();
+        if (fl & 1) { m.anchor = (uint32_t)r.v(); anc = m.anchor > 0; }
+        if (fl & 2) {
+            uint64_t n = r.v();
+            if (!r.ok || n > raw.size()) return false;
+            m.tpsChanges.resize((size_t)n);
+            uint32_t prev = 0;
+            for (auto& c : m.tpsChanges) { prev += (uint32_t)r.v(); c.tick = prev; c.tps = (uint32_t)r.v(); }
+        }
+    }
     uint64_t ni = r.v(), nf = r.v();
     if (!r.ok || ni > raw.size() || nf > raw.size()) return false;
     m.inputs.resize(ni); m.fixes.resize(nf);
@@ -109,6 +168,18 @@ bool decode(Buf const& raw, Macro& m, bool v3) {
     for (auto& i : m.inputs) { uint8_t c = r.b(); i.button = (c & 3) + 1; i.down = c & 4; i.p2 = c & 8; }
     last = 0;
     for (auto& f : m.fixes) { uint64_t v = r.v(); last += (uint32_t)(v >> 1); f.tick = last; f.p2 = v & 1; }
+    if (anc) {
+        for (int c = 0; c < 4; ++c) {
+            AHist hc[2];
+            for (auto& f : m.fixes) {
+                int64_t q = aPredict(hc[f.p2], f.tick) + unzz(r.v());
+                aPush(hc[f.p2], q, f.tick);
+                float v = fromQ(q, c);
+                (c == 0 ? f.x : c == 1 ? f.y : c == 2 ? f.rot : f.yv) = v;
+            }
+        }
+        return r.ok;
+    }
     for (int c = 0; c < 4; ++c) {
         Hist hc[2];
         for (auto& f : m.fixes) {
@@ -138,9 +209,15 @@ bool loadLegacy(std::ifstream& f, Macro& m) {
 }
 
 bool saveMacro(Macro const& m, std::string const& name) {
-    Buf raw = encode(m);
+    bool anc = anchorable(m), tc = !m.tpsChanges.empty();
+    Buf raw = encode(m, anc, tc);
     Buf packed = lz(raw);
-    Buf out = {'X', 'Y', 'Z', '3'};
+    Buf out = {
+        static_cast<unsigned char>('X'),
+        static_cast<unsigned char>('Y'),
+        static_cast<unsigned char>('Z'),
+        static_cast<unsigned char>((anc || tc) ? '5' : '3')
+    };
     putV(out, raw.size());
     out.insert(out.end(), packed.begin(), packed.end());
     std::ofstream f(macroDir() / (name + ".xyz"), std::ios::binary);
@@ -154,14 +231,14 @@ bool loadMacro(Macro& m, std::string const& name) {
     char magic[4];
     if (!f || !f.read(magic, 4)) return false;
     if (std::memcmp(magic, "XYZM", 4) == 0) return loadLegacy(f, m);
-    bool v3 = std::memcmp(magic, "XYZ3", 4) == 0;
-    if (!v3 && std::memcmp(magic, "XYZ2", 4) != 0) return false;
+    int ver = std::memcmp(magic, "XYZ5", 4) == 0 ? 5 : std::memcmp(magic, "XYZ4", 4) == 0 ? 4 : std::memcmp(magic, "XYZ3", 4) == 0 ? 3 : std::memcmp(magic, "XYZ2", 4) == 0 ? 2 : 0;
+    if (ver == 0) return false;
     Buf rest((std::istreambuf_iterator<char>(f)), {});
     Rd r{rest.data(), rest.data() + rest.size()};
     uint64_t rawSize = r.v();
     if (!r.ok || rawSize > (1ull << 30)) return false;
     Buf raw;
     if (!unlz(r.p, r.e, (size_t)rawSize, raw)) return false;
-    return decode(raw, m, v3);
+    return decode(raw, m, ver);
 }
 }

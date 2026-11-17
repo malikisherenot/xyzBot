@@ -197,7 +197,7 @@ void readDirect() {
 #endif
 
 fs::path renderDir() {
-    auto p = Mod::get()->getSaveDir() / "renders";
+    auto p = xyz::persistDir("renders");
     std::error_code ec; fs::create_directories(p, ec);
     return p;
 }
@@ -247,7 +247,9 @@ std::string startRender() {
 
     auto ws = CCDirector::get()->getWinSize();
     g_w = std::clamp(c.renderW, 320, 3840) & ~1;
-    g_h = (int)std::lround(g_w * ws.height / ws.width) & ~1;
+    g_h = c.renderAutoH
+        ? ((int)std::lround(g_w * ws.height / ws.width) & ~1)
+        : (std::clamp(c.renderH, 320, 3840) & ~1);
     g_fps = std::clamp(c.renderFps, 10, 240);
 
     std::string name = macroFileName();

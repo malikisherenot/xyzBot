@@ -1,4 +1,4 @@
-// Macro importers, based on xdBot, siliconv, slc and Echo's converters (GPL-3.0).
+// Macro importers (duh... O⁠_⁠o)
 #include "State.hpp"
 #include "../third_party/json.hpp"
 #include <algorithm>
@@ -62,6 +62,15 @@ void addFix(Macro& m, int frame, bool p2, float x, float y, float rot) {
 void finish(Macro& m) {
     std::stable_sort(m.inputs.begin(), m.inputs.end(), [](auto& a, auto& b) { return a.tick < b.tick; });
     std::stable_sort(m.fixes.begin(), m.fixes.end(), [](auto& a, auto& b) { return a.tick < b.tick; });
+    std::stable_sort(m.tpsChanges.begin(), m.tpsChanges.end(), [](auto& a, auto& b) { return a.tick < b.tick; });
+    std::vector<TpsChange> tc; uint32_t cur = m.tps;
+    for (auto& c : m.tpsChanges) {
+        if (c.tick == 0 || c.tps < 1) continue;
+        if (!tc.empty() && tc.back().tick == c.tick) tc.back().tps = c.tps;
+        else tc.push_back(c);
+    }
+    m.tpsChanges.clear();
+    for (auto& c : tc) { if (c.tps != cur) m.tpsChanges.push_back(c); cur = c.tps; }
     m.ticks = 0;
     for (auto& i : m.inputs) m.ticks = std::max(m.ticks, i.tick);
 }
@@ -191,10 +200,15 @@ struct SlcWalk {
         m.inputs.push_back({(uint32_t)local, (uint8_t)btn, down, p2});
     }
     void restart(uint64_t newSeed, bool hasSeed) {
-        m.inputs.clear(); m.fixes.clear(); startTps = tps; attempt = frame + 1;
+        m.inputs.clear(); m.fixes.clear(); m.tpsChanges.clear(); startTps = tps; attempt = frame + 1;
         if (hasSeed) seed = newSeed;
     }
-    void setTps(double v) { if (std::isfinite(v) && v >= 1.0) { tps = v; if (frame <= attempt) startTps = v; } }
+    void setTps(double v) {
+        if (!std::isfinite(v) || v < 1.0) return;
+        tps = v;
+        if (frame <= attempt) startTps = v;
+        else if (frame - attempt <= 0x7fffffffULL) m.tpsChanges.push_back({(uint32_t)(frame - attempt), (uint32_t)std::lround(v)});
+    }
     void state3(uint64_t v) {
         frame += v >> 4;
         int btn = (int)((v >> 2) & 3); bool p2 = (v >> 1) & 1;
@@ -352,7 +366,7 @@ bool importTcbot(Macro& m, std::vector<uint8_t> const& d) {
             if (in.fail) { ok = false; break; }
             int input = data & 7;
             if (input < 3) push(frame, input + 1, data & 0x80, data & 0x40);
-            else if (input <= 5) m.inputs.clear();
+            else if (input <= 5) { m.inputs.clear(); m.tpsChanges.clear(); }
             else { ok = false; break; }
         }
         ok = ok && !in.fail;
@@ -373,7 +387,7 @@ bool importTcbot(Macro& m, std::vector<uint8_t> const& d) {
                 } else {
                     int custom = (byte >> 2) & 3;
                     if (custom == 3) next = extra ? 1 : 2;
-                    else { m.inputs.clear(); frame = 0; next = extra ? 3 : 1; }
+                    else { m.inputs.clear(); m.tpsChanges.clear(); frame = 0; next = extra ? 3 : 1; }
                 }
             } else if (next == 1) {
                 bool magic = info & 1; int blob = info >> 1;
@@ -384,7 +398,10 @@ bool importTcbot(Macro& m, std::vector<uint8_t> const& d) {
             } else if (next == 2) {
                 float v = in.pod<float>();
                 if (in.fail) break;
-                if (std::isfinite(v) && v >= 1.f && frame <= 2) startTps = v;
+                if (std::isfinite(v) && v >= 1.f) {
+                    if (frame <= 2) startTps = v;
+                    else if (frame - 2 <= 0x7fffffffULL) m.tpsChanges.push_back({(uint32_t)(frame - 2), (uint32_t)std::lround(v)});
+                }
                 next = 1;
             } else { in.u(8); if (in.fail) break; next = 1; }
         }
@@ -471,7 +488,7 @@ bool importEchoJson(Macro& m, json const& j) {
     return true;
 }
 
-// GDR2 (binary, maxnut's GDReplayFormat v2). Numbers are LEB128, floats and doubles are big endian.
+// GDR2 (thank you maxnut!!)
 bool importGdr2(Macro& m, std::vector<uint8_t> const& d) {
     Bytes in{d};
     in.at = 3;
@@ -604,6 +621,46 @@ bool importText(Macro& m, std::string const& s) {
     return true;
 }
 
+// stop updating the format fra.exe
+bool importOmega(Macro& m, std::vector<uint8_t> const& d) {
+    if (d.size() < 8 || std::memcmp(d.data(), "OMEGA", 5) != 0) { g_err = "Not an OMEGA macro"; return false; }
+    if (d[5] != 1) { g_err = "Unsupported OMEGA version"; return false; }
+    auto parse = [&](bool interleaved, Macro& out) {
+        Bytes in{d}; in.at = 6;
+        uint32_t tps = (uint32_t)in.u(2);
+        uint64_t count = in.leb();
+        if (in.fail || count > in.left() / 2) return false;
+        std::vector<uint64_t> deltas;
+        std::vector<uint8_t> flags;
+        deltas.reserve((size_t)count); flags.reserve((size_t)count);
+        if (interleaved) {
+            for (uint64_t i = 0; i < count; ++i) { deltas.push_back(in.leb()); flags.push_back((uint8_t)in.u(1)); }
+        } else {
+            for (uint64_t i = 0; i < count; ++i) deltas.push_back(in.leb());
+            for (uint64_t i = 0; i < count; ++i) flags.push_back((uint8_t)in.u(1));
+        }
+        if (in.fail || in.at != d.size()) return false;
+        out = Macro{};
+        out.tps = tps ? tps : 240;
+        uint64_t frame = 0;
+        for (size_t i = 0; i < deltas.size(); ++i) {
+            frame += deltas[i];
+            if (frame > 0x7fffffffULL) return false;
+            uint8_t fl = flags[i];
+            int btn = (fl >> 3) & 3;
+            if (btn == 0) btn = 1;
+            out.inputs.push_back({(uint32_t)frame, (uint8_t)btn, (fl & 1) != 0, (fl & 2) != 0});
+        }
+        return true;
+    };
+    Macro out;
+    if (!parse(true, out) && !parse(false, out)) { g_err = "Corrupt OMEGA macro"; return false; }
+    m = std::move(out);
+    finish(m);
+    if (m.inputs.empty()) { g_err = "Macro has no inputs"; return false; }
+    return true;
+}
+
 bool endsWith(std::string const& s, std::string const& e) { return s.size() >= e.size() && s.compare(s.size() - e.size(), e.size(), e) == 0; }
 }
 
@@ -612,7 +669,7 @@ std::string const& importError() { return g_err; }
 bool canImport(std::filesystem::path const& file) {
     auto n = utils::string::pathToString(file.filename());
     std::transform(n.begin(), n.end(), n.begin(), [](unsigned char c) { return (char)std::tolower(c); });
-    for (char const* e : {".gdr", ".gdr.json", ".gdr2", ".json", ".xd", ".slc", ".tcm", ".echo", ".txt", ".csv"}) if (endsWith(n, e)) return true;
+    for (char const* e : {".gdr", ".gdr.json", ".gdr2", ".json", ".xd", ".slc", ".tcm", ".echo", ".omega", ".txt", ".csv"}) if (endsWith(n, e)) return true;
     return false;
 }
 
@@ -628,6 +685,7 @@ bool importMacro(Macro& m, std::filesystem::path const& file) {
         if (endsWith(n, ".slc")) return importSlc(m, data);
         if (endsWith(n, ".tcm")) return importTcbot(m, data) || (g_err = g_err.empty() ? "Not a TCBot macro" : g_err, false);
         if (endsWith(n, ".echo") && !endsWith(n, ".echo.json")) return importLegacyEcho(m, data);
+        if (endsWith(n, ".omega")) return importOmega(m, data);
         if (endsWith(n, ".gdr2")) return importGdr2(m, data);
         if (endsWith(n, ".gdr") || endsWith(n, ".json")) return importGdr(m, data);
         if (endsWith(n, ".txt") || endsWith(n, ".csv")) return importText(m, std::string(data.begin(), data.end()));

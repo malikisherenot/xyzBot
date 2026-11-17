@@ -6,7 +6,7 @@
     "mac": "2.2081",
     "ios": "2.2081"
   },
-  "version": "v1.18.0",
+  "version": "v1.19.0",
   "id": "itzmalikhere.xyzbot",
   "name": "xyzBot",
   "developer": "itzmalikhere",
@@ -37,7 +37,9 @@
     "eclipse.ffmpeg-api": {
       "version": ">=v2.0.0",
       "importance": "suggested",
-      "platforms": ["android"]
+      "platforms": [
+        "android"
+      ]
     }
   }
 }

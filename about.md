@@ -1,10 +1,10 @@
 # xyzBot
 
-A macro bot for Geometry Dash. It records and replays tick-accurate inputs, and includes assist tools for making macros.
+An advanced macro bot for Geometry Dash.
 
-- Record and replay with three accuracy modes: Vanilla, Input Fixes and Frame Fixes
+- Record and replay with four accuracy modes: Vanilla, Input Fixes, Frame Fixes and Anchor Fixes
 - TPS bypass, speedhack, frame stepper and noclip
-- Import macros from xdBot, Silicate, TCBot, Echo and plain text formats
+- Import macros from xdBot, Silicate, TCBot, Echo, Omega and plain text formats
 - Hitboxes, hitbox trail, trajectory preview and Wave Drag Fix
 - 21 on-screen labels and a layout mode
 - Video rendering (Android, requires the FFmpeg API mod)

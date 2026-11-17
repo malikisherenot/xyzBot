@@ -18,6 +18,60 @@ std::deque<std::array<CCRect, 2>> g_trail[2];
 
 ccColor4F col(float r, float g, float b, float a = 1.f) { return {r, g, b, a}; }
 
+// hitboxes are darker and way more solid now, almost full alpha (^o^)b
+constexpr float kFill = 0.5f;
+
+// slopes, rewritten (>_<) now we ask the game where the long edge goes and which side is solid
+// if EVERY slope shows up flipped upside down, just flip this switch (^_^)
+constexpr bool kFloorSlopeIsSolidBelow = true;
+
+// plan B when the game's numbers look weird: work it out from rotation and flips, right angle starts bottom-right
+bool slopeTriGuess(GameObject* o, CCPoint out[3]) {
+    float rot = std::fmod(o->getRotation(), 360.f);
+    if (rot < 0.f) rot += 360.f;
+    int k = (int)std::lround(rot / 90.f);
+    if (std::abs(rot - 90.f * (float)k) > 0.5f) return false; // odd angles stay boxes
+    k %= 4;
+    int sx = 1, sy = -1;
+    if (o->m_isFlipX != (o->getScaleX() < 0.f)) sx = -sx;
+    if (o->m_isFlipY != (o->getScaleY() < 0.f)) sy = -sy;
+    for (int i = 0; i < k; ++i) { int nx = sy, ny = -sx; sx = nx; sy = ny; }
+    auto r = o->getObjectRect();
+    CCPoint c[4] = {{r.getMinX(), r.getMinY()}, {r.getMaxX(), r.getMinY()}, {r.getMaxX(), r.getMaxY()}, {r.getMinX(), r.getMaxY()}};
+    int cs[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
+    int n = 0;
+    for (int i = 0; i < 4; ++i) {
+        if (cs[i][0] == -sx && cs[i][1] == -sy) continue; // the corner opposite the right angle is empty
+        out[n++] = c[i];
+    }
+    return n == 3;
+}
+
+bool slopeTri(GameObject* o, CCPoint out[3]) {
+    auto r = o->getObjectRect();
+    float lo = r.getMinY(), hi = r.getMaxY(), x0 = r.getMinX(), x1 = r.getMaxX();
+    float eps = std::max(0.5f, r.size.height * 0.05f);
+    // the long edge: the game says how high the slope is at both ends of its box
+    float yl = (float)o->slopeYPos(x0), yr = (float)o->slopeYPos(x1);
+    bool up;
+    if (std::abs(yl - lo) <= eps && std::abs(yr - hi) <= eps) up = true;        // "/"
+    else if (std::abs(yl - hi) <= eps && std::abs(yr - lo) <= eps) up = false;  // "\"
+    else return slopeTriGuess(o, out);
+    bool below = o->slopeFloorTop() == kFloorSlopeIsSolidBelow; // solid under the long edge, or above it
+    if (up) {
+        out[0].x = x0; out[0].y = lo;
+        out[1].x = x1; out[1].y = hi;
+        if (below) { out[2].x = x1; out[2].y = lo; }
+        else { out[2].x = x0; out[2].y = hi; }
+    } else {
+        out[0].x = x0; out[0].y = hi;
+        out[1].x = x1; out[1].y = lo;
+        if (below) { out[2].x = x0; out[2].y = lo; }
+        else { out[2].x = x1; out[2].y = hi; }
+    }
+    return true;
+}
+
 void poly(CCDrawNode* n, CCRect const& r, ccColor4F fill, float w, ccColor4F border) {
     CCPoint v[4] = {{r.getMinX(), r.getMinY()}, {r.getMaxX(), r.getMinY()}, {r.getMaxX(), r.getMaxY()}, {r.getMinX(), r.getMaxY()}};
     n->drawPolygon(v, 4, fill, w, border);
@@ -25,27 +79,30 @@ void poly(CCDrawNode* n, CCRect const& r, ccColor4F fill, float w, ccColor4F bor
 
 void obox(CCDrawNode* n, GameObject* o, ccColor4F c, float w) {
     auto b = o->getOrientedBox();
-    if (b) n->drawPolygon(b->m_corners.data(), 4, {c.r, c.g, c.b, c.a * 0.15f}, w, c);
-    else poly(n, o->getObjectRect(), {c.r, c.g, c.b, c.a * 0.15f}, w, c);
+    if (b) n->drawPolygon(b->m_corners.data(), 4, {c.r, c.g, c.b, kFill}, w, c);
+    else poly(n, o->getObjectRect(), {c.r, c.g, c.b, kFill}, w, c);
 }
 
 void drawPlayer(CCDrawNode* n, PlayerObject* p, float w) {
     auto& c = cfg();
     if (!p) return;
-    if (c.hbRotated) obox(n, p, col(1.f, 0.6f, 0.f), w);
+    if (c.hbRotated) obox(n, p, col(0.9f, 0.45f, 0.f), w);
     if (c.hbPlayer) {
         float rad = p->getObjectRect().size.width / 2.f;
-        if (rad > 0.f) n->drawCircle(p->getPosition(), rad, {0, 0, 0, 0}, w, col(1, 0.9f, 0), (unsigned)std::max(rad, 8.f) * 2);
-        poly(n, p->getObjectRect(), col(1, 0, 0, 0.15f), w, col(1, 0, 0));
-        poly(n, p->getObjectRect(0.3f, 0.3f), col(0, 0.5f, 1, 0.15f), w, col(0, 0.5f, 1));
+        if (rad > 0.f) n->drawCircle(p->getPosition(), rad, {0, 0, 0, 0}, w, col(0.85f, 0.7f, 0), (unsigned)std::max(rad, 8.f) * 2);
+        poly(n, p->getObjectRect(), col(0.85f, 0, 0, kFill), w, col(0.85f, 0, 0));
+        poly(n, p->getObjectRect(0.3f, 0.3f), col(0, 0.35f, 0.9f, kFill), w, col(0, 0.35f, 0.9f));
     }
 }
 
 void drawHitboxes(GJBaseGameLayer* pl) {
     auto& c = cfg();
     g_hb->clear();
-    float w = 0.6f / std::max(0.1f, (float)pl->m_gameState.m_cameraZoom);
+    auto ed = typeinfo_cast<LevelEditorLayer*>(pl);
+    bool idle = ed && ed->m_playbackMode != PlaybackMode::Playing; // editor, not playtesting (^_^)
     auto layer = pl->m_objectLayer;
+    float zoom = ed ? layer->getScale() : (float)pl->m_gameState.m_cameraZoom;
+    float w = 0.6f / std::max(0.1f, zoom);
     auto size = CCDirector::get()->getWinSize();
     auto a = layer->convertToNodeSpace({0, 0});
     auto b = layer->convertToNodeSpace({size.width, size.height});
@@ -59,45 +116,63 @@ void drawHitboxes(GJBaseGameLayer* pl) {
             auto r = o->getObjectRect();
             if (!view.intersectsRect(r)) continue;
             ccColor4F cl; bool on;
-            if (t == GameObjectType::Hazard || t == GameObjectType::AnimatedHazard) { cl = col(1, 0.1f, 0.1f); on = c.hbHazard; }
-            else if (t == GameObjectType::Solid || t == GameObjectType::Slope || t == GameObjectType::Breakable) { cl = col(0.2f, 0.45f, 1); on = c.hbSolid; }
-            else { cl = col(0.1f, 1, 0.3f); on = c.hbSpecial; }
+            if (t == GameObjectType::Hazard || t == GameObjectType::AnimatedHazard) { cl = col(0.8f, 0.05f, 0.05f); on = c.hbHazard; }
+            else if (t == GameObjectType::Solid || t == GameObjectType::Slope || t == GameObjectType::Breakable) { cl = col(0.1f, 0.25f, 0.85f); on = c.hbSolid; }
+            else { cl = col(0.05f, 0.7f, 0.2f); on = c.hbSpecial; }
             if (!on) continue;
             if (t == GameObjectType::Hazard || t == GameObjectType::AnimatedHazard) {
                 auto ply = typeinfo_cast<PlayLayer*>(pl);
-                if (!o->m_isActivated || (ply && o == ply->m_anticheatSpike)) continue;
+                if ((!idle && !o->m_isActivated) || (ply && o == ply->m_anticheatSpike)) continue; // the editor never activates anything while idle
                 float rad = o->m_objectRadius * std::max(o->m_scaleX, o->m_scaleY);
                 if (rad > 0.f) {
                     auto segs = (unsigned)(std::max(rad, 8.f) * 2.f * std::sqrt(std::max(0.1f, (float)pl->m_gameState.m_cameraZoom)));
-                    g_hb->drawCircle(o->getPosition(), rad, {cl.r, cl.g, cl.b, 0.12f}, w, cl, segs);
+                    g_hb->drawCircle(o->getPosition(), rad, {cl.r, cl.g, cl.b, kFill}, w, cl, segs);
                     continue;
                 }
             }
+            if (t == GameObjectType::Slope) {
+                CCPoint tri[3];
+                if (slopeTri(o, tri)) { g_hb->drawPolygon(tri, 3, {cl.r, cl.g, cl.b, kFill}, w, cl); continue; }
+            }
             if (c.hbRotated && o->getRotation() != 0.f) obox(g_hb, o, cl, w);
-            else poly(g_hb, r, {cl.r, cl.g, cl.b, 0.12f}, w, cl);
+            else poly(g_hb, r, {cl.r, cl.g, cl.b, kFill}, w, cl);
         }
     }
-    if (c.hbPlayer || c.hbRotated) {
+    if (!idle && (c.hbPlayer || c.hbRotated)) {
         drawPlayer(g_hb, pl->m_player1, w);
         if (pl->m_gameState.m_isDualMode) drawPlayer(g_hb, pl->m_player2, w);
     }
-    if (c.trail) {
+    if (!c.trail || idle) { if (!c.trail) { g_trail[0].clear(); g_trail[1].clear(); } } // stale trail stays gone when you toggle it back on
+    else {
         for (auto& tq : g_trail)
             for (size_t i = 0; i < tq.size(); ++i) {
-                float al = 0.1f + 0.5f * (float)i / (float)tq.size();
-                poly(g_hb, tq[i][0], col(0, 0, 0, 0), w, col(1, 0, 0, al));
+                float al = 0.25f + 0.75f * (float)i / (float)tq.size();
+                poly(g_hb, tq[i][0], col(0, 0, 0, 0), w, col(0.85f, 0, 0, al));
             }
     }
 }
 
 void copyState(PlayerObject* f, PlayerObject* p) {
-    f->toggleFlyMode(p->m_isShip, true);
-    f->toggleBirdMode(p->m_isBird, true);
-    f->toggleRollMode(p->m_isBall, true);
-    f->toggleDartMode(p->m_isDart, true);
-    f->toggleRobotMode(p->m_isRobot, true);
-    f->toggleSpiderMode(p->m_isSpider, true);
-    f->toggleSwingMode(p->m_isSwing, true);
+    // only touch a mode when it really changed, poking all of them every frame was breaking the fake after portals (;-;)
+    // modes that turn off go first, then the one that turns on, so they never fight each other
+    if (f->m_isShip && !p->m_isShip) f->toggleFlyMode(false, true);
+    if (f->m_isBird && !p->m_isBird) f->toggleBirdMode(false, true);
+    if (f->m_isBall && !p->m_isBall) f->toggleRollMode(false, true);
+    if (f->m_isDart && !p->m_isDart) f->toggleDartMode(false, true);
+    if (f->m_isRobot && !p->m_isRobot) f->toggleRobotMode(false, true);
+    if (f->m_isSpider && !p->m_isSpider) f->toggleSpiderMode(false, true);
+    if (f->m_isSwing && !p->m_isSwing) f->toggleSwingMode(false, true);
+    if (!f->m_isShip && p->m_isShip) f->toggleFlyMode(true, true);
+    if (!f->m_isBird && p->m_isBird) f->toggleBirdMode(true, true);
+    if (!f->m_isBall && p->m_isBall) f->toggleRollMode(true, true);
+    if (!f->m_isDart && p->m_isDart) f->toggleDartMode(true, true);
+    if (!f->m_isRobot && p->m_isRobot) f->toggleRobotMode(true, true);
+    if (!f->m_isSpider && p->m_isSpider) f->toggleSpiderMode(true, true);
+    if (!f->m_isSwing && p->m_isSwing) f->toggleSwingMode(true, true);
+    // mini mode! the fake was always staying normal size, now it follows the real player (>w<)
+    bool mini = p->m_vehicleSize < 0.99f;
+    if ((f->m_vehicleSize < 0.99f) != mini) f->togglePlayerScale(mini, true);
+    f->m_isSecondPlayer = p->m_isSecondPlayer;
     f->m_isUpsideDown = p->m_isUpsideDown;
     f->m_isSideways = p->m_isSideways;
     f->m_vehicleSize = p->m_vehicleSize;
@@ -213,6 +288,14 @@ void detach() {
     for (auto& f : g_fake) { CC_SAFE_RELEASE(f); f = nullptr; }
     CC_SAFE_RELEASE(g_hb); g_hb = nullptr;
     CC_SAFE_RELEASE(g_tr); g_tr = nullptr;
+}
+
+void trailClear() { g_trail[0].clear(); g_trail[1].clear(); }
+
+void refreshEditor(GJBaseGameLayer* pl) {
+    if (!g_hb) return;
+    g_hb->setVisible(cfg().hitboxes);
+    if (cfg().hitboxes) drawHitboxes(pl); else g_hb->clear();
 }
 
 void sampleTrail(GJBaseGameLayer* pl) {

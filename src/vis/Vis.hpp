@@ -4,6 +4,8 @@ namespace xyz::vis {
 void attach(GJBaseGameLayer* pl);
 void detach();
 void sampleTrail(GJBaseGameLayer* pl);
+void trailClear();
+void refreshEditor(GJBaseGameLayer* pl);
 void refresh(GJBaseGameLayer* pl);
 bool predictDeath(GJBaseGameLayer* pl, int look);
 void trajAdjust(GJBaseGameLayer* pl);
@@ -12,6 +14,7 @@ void hideLabels();
 void rotClear();
 void rotRestore(GJBaseGameLayer* gl);
 void rotPresent(GJBaseGameLayer* gl);
+void waveSync(PlayerObject* p);
 }
 namespace xyz::labels {
 struct Cfg { bool on = false; int anchor = 0; int font = 1; float opacity = 1.f; float scale = 0.7f; int r = 255, g = 255, b = 255; };

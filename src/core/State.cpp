@@ -1,11 +1,14 @@
 #include "State.hpp"
 #include <fstream>
+#include <set>
+#include <vector>
 
 using namespace geode::prelude;
 
 namespace xyz {
 Cfg& cfg() { static Cfg c; return c; }
 Rt& rt() { static Rt r; return r; }
+bool tpsDynamic() { auto& r = rt(); return r.mode == Mode::Play && !r.play.tpsChanges.empty(); }
 float curTps() { return cfg().tps ? std::max(1.f, cfg().tpsVal) : 240.f; }
 
 void profFrame(double loopUs, double gapUs) {
@@ -47,18 +50,19 @@ void profFrame(double loopUs, double gapUs) {
 
 void loadCfg() {
     auto& c = cfg(); auto m = Mod::get();
-    { int a = m->getSavedValue<int>("accuracy", -1); c.accuracy = a >= 0 ? std::min(a, 2) : (m->getSavedValue<bool>("fixes", true) ? 2 : 0); }
+    { int a = m->getSavedValue<int>("accuracy", -1); c.accuracy = a >= 0 ? std::min(a, 3) : (m->getSavedValue<bool>("fixes", true) ? 2 : 0); }
+    LD(lockDelta, bool); LD(anchorK, int); c.anchorK = std::clamp(c.anchorK, 2, 64);
     LD(tps, bool); LD(tpsVal, double); LD(budgetMs, double); LD(speed, bool); LD(speedVal, double);
     LD(noclip, bool); LD(trajAuto, bool); LD(profiler, bool); LD(trajLook, int); LD(fastSub, bool); LD(skipVis, bool); LD(ignoreLevel, bool); LD(hitboxes, bool);
     LD(hbPlayer, bool); LD(hbSolid, bool); LD(hbHazard, bool); LD(hbSpecial, bool); LD(hbRotated, bool);
-    LD(trail, bool); LD(trailLen, int); LD(traj, bool); LD(trajLen, int);
+    LD(trail, bool); LD(trailClear, bool); LD(trailLen, int); LD(traj, bool); LD(trajLen, int);
     LD(blockInputs, bool); LD(maintainGravity, bool); LD(mirror, bool); LD(mirrorInv, bool); LD(noMirror, bool);
     LD(preventDeath, bool); LD(pdLook, int); LD(layout, bool); LD(speedAudio, bool); LD(autoExit, bool);
     LD(autosave, bool); LD(autosaveSec, int); LD(labels, bool);
     LD(ssbFix, bool); LD(ssbInvert, bool); LD(legacyShip, bool); LD(legacyShipPct, int);
     LD(btnInLevel, bool);
-    LD(fixRotation, bool); LD(waveDragFix, bool); LD(renderW, int); LD(renderFps, int); LD(renderBitrate, int); LD(renderCodec, int); LD(renderTail, int); LD(renderAudio, bool);
-    c.renderMacro = m->getSavedValue<std::string>("renderMacro", ""); LD(takeOver, bool); LD(continueEnd, bool); LD(autoName, bool); LD(noOverwrite, bool); LD(renameFmt, int); LD(recPlayers, int); LD(playPlayers, int);
+    LD(fixRotation, bool); LD(waveDragFix, bool); LD(renderW, int); LD(renderH, int); LD(renderAutoH, bool); LD(renderFps, int); LD(renderBitrate, int); LD(renderCodec, int); LD(renderTail, int); LD(renderAudio, bool);
+    c.renderMacro = m->getSavedValue<std::string>("renderMacro", ""); LD(autoName, bool); LD(noOverwrite, bool); LD(renameFmt, int); LD(recPlayers, int); LD(playPlayers, int);
     LD(swapInput, bool); LD(seqOn, bool); LD(seqRandom, bool);
     c.inverse[0] = m->getSavedValue<bool>("inverse0", false); c.inverse[1] = m->getSavedValue<bool>("inverse1", false);
     {
@@ -100,16 +104,16 @@ void saveCfg() {
     auto& c = cfg(); auto m = Mod::get();
     SV(tps, bool); m->setSavedValue<double>("tpsVal", c.tpsVal); m->setSavedValue<double>("budgetMs", c.budgetMs);
     SV(speed, bool); m->setSavedValue<double>("speedVal", c.speedVal);
-    SV(noclip, bool); SV(accuracy, int); SV(trajAuto, bool); SV(profiler, bool); SV(trajLook, int); SV(fastSub, bool); SV(skipVis, bool); SV(ignoreLevel, bool); SV(hitboxes, bool);
+    SV(noclip, bool); SV(accuracy, int); SV(anchorK, int); SV(lockDelta, bool); SV(trajAuto, bool); SV(profiler, bool); SV(trajLook, int); SV(fastSub, bool); SV(skipVis, bool); SV(ignoreLevel, bool); SV(hitboxes, bool);
     SV(hbPlayer, bool); SV(hbSolid, bool); SV(hbHazard, bool); SV(hbSpecial, bool); SV(hbRotated, bool);
-    SV(trail, bool); SV(trailLen, int); SV(traj, bool); SV(trajLen, int);
+    SV(trail, bool); SV(trailClear, bool); SV(trailLen, int); SV(traj, bool); SV(trajLen, int);
     SV(blockInputs, bool); SV(maintainGravity, bool); SV(mirror, bool); SV(mirrorInv, bool); SV(noMirror, bool);
     SV(preventDeath, bool); SV(pdLook, int); SV(layout, bool); SV(speedAudio, bool); SV(autoExit, bool);
     SV(autosave, bool); SV(autosaveSec, int); SV(labels, bool);
     SV(ssbFix, bool); SV(ssbInvert, bool); SV(legacyShip, bool); SV(legacyShipPct, int);
     SV(btnInLevel, bool);
-    SV(fixRotation, bool); SV(waveDragFix, bool); SV(renderW, int); SV(renderFps, int); SV(renderBitrate, int); SV(renderCodec, int); SV(renderTail, int); SV(renderAudio, bool);
-    m->setSavedValue<std::string>("renderMacro", c.renderMacro); SV(takeOver, bool); SV(continueEnd, bool); SV(autoName, bool); SV(noOverwrite, bool); SV(renameFmt, int); SV(recPlayers, int); SV(playPlayers, int);
+    SV(fixRotation, bool); SV(waveDragFix, bool); SV(renderW, int); SV(renderH, int); SV(renderAutoH, bool); SV(renderFps, int); SV(renderBitrate, int); SV(renderCodec, int); SV(renderTail, int); SV(renderAudio, bool);
+    m->setSavedValue<std::string>("renderMacro", c.renderMacro); SV(autoName, bool); SV(noOverwrite, bool); SV(renameFmt, int); SV(recPlayers, int); SV(playPlayers, int);
     SV(swapInput, bool); SV(seqOn, bool); SV(seqRandom, bool);
     m->setSavedValue<bool>("inverse0", c.inverse[0]); m->setSavedValue<bool>("inverse1", c.inverse[1]);
     {
@@ -141,11 +145,31 @@ void saveCfg() {
     }
 }
 
-std::filesystem::path macroDir() {
-    auto p = Mod::get()->getSaveDir() / "macros";
-    std::error_code ec; std::filesystem::create_directories(p, ec);
-    return p;
+// everything we save lives in geode-persistent now, so updates and reinstalls leave it alone (^o^)b
+// files from the old place hop over by themselves the first time we look
+std::filesystem::path persistDir(std::string const& sub) {
+    namespace fs = std::filesystem;
+    auto to = Mod::get()->getPersistentDir() / sub;
+    std::error_code ec;
+    fs::create_directories(to, ec);
+    static std::set<std::string> done;
+    if (done.insert(sub).second) {
+        auto from = Mod::get()->getSaveDir() / sub;
+        std::vector<fs::path> files;
+        if (from != to && fs::is_directory(from, ec))
+            for (auto& e : fs::directory_iterator(from, ec))
+                if (e.is_regular_file(ec)) files.push_back(e.path());
+        for (auto& f : files) {
+            auto dst = to / f.filename();
+            if (fs::exists(dst, ec)) continue;
+            fs::rename(f, dst, ec);
+            if (ec) { ec.clear(); fs::copy_file(f, dst, ec); if (!ec) fs::remove(f, ec); }
+        }
+    }
+    return to;
 }
+
+std::filesystem::path macroDir() { return persistDir("macros"); }
 
 std::vector<std::string> listMacros() {
     std::vector<std::string> out;
@@ -171,7 +195,7 @@ std::string uniqueMacroName(std::string const& base) {
 
 bool mergeMacros(std::string const& a, std::string const& b, std::string& outName) {
     Macro ma, mb;
-    if (!loadMacro(ma, a) || !loadMacro(mb, b) || ma.tps != mb.tps) return false;
+    if (!loadMacro(ma, a) || !loadMacro(mb, b) || ma.tps != mb.tps || !ma.tpsChanges.empty() || !mb.tpsChanges.empty()) return false;
     ma.inputs.insert(ma.inputs.end(), mb.inputs.begin(), mb.inputs.end());
     std::stable_sort(ma.inputs.begin(), ma.inputs.end(), [](auto& x, auto& y) { return x.tick < y.tick; });
     for (auto& f : mb.fixes) {

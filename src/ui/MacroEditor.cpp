@@ -50,6 +50,7 @@ public:
 struct Snap {
     std::vector<xyz::Input> in;
     std::vector<xyz::Fix> fx;
+    std::vector<xyz::TpsChange> tc;
     uint32_t ticks = 0;
     bool hasFx = false;
 };
@@ -69,7 +70,7 @@ class MacroEditor : public geode::Popup {
 
     void push(bool withFx) {
         Snap s;
-        s.in = m_m.inputs; s.ticks = m_m.ticks;
+        s.in = m_m.inputs; s.tc = m_m.tpsChanges; s.ticks = m_m.ticks;
         if (withFx) { s.fx = m_m.fixes; s.hasFx = true; }
         m_undo.push_back(std::move(s));
         if (m_undo.size() > MAX_UNDO) m_undo.erase(m_undo.begin());
@@ -128,7 +129,8 @@ class MacroEditor : public geode::Popup {
             return b;
         };
 
-        label(fmt::format("{}{}  |  {} inputs  |  {} TPS  |  {} ticks", m_name, m_dirty ? " *" : "", m_m.inputs.size(), m_m.tps, m_m.ticks),
+        label(fmt::format("{}{}  |  {} inputs  |  {} TPS{}  |  {} ticks", m_name, m_dirty ? " *" : "", m_m.inputs.size(), m_m.tps,
+                          m_m.tpsChanges.empty() ? "" : fmt::format(" (+{} changes)", m_m.tpsChanges.size()), m_m.ticks),
               W / 2.f, H - 42.f, 0.32f, false, {200, 200, 200});
 
         // header
@@ -221,6 +223,7 @@ class MacroEditor : public geode::Popup {
                 auto mv = [d](uint32_t& t) { t = (uint32_t)std::max<int64_t>(0, (int64_t)t + d); };
                 for (auto& in : m_m.inputs) mv(in.tick);
                 for (auto& f : m_m.fixes) mv(f.tick);
+                for (auto& c : m_m.tpsChanges) mv(c.tick);
                 mv(m_m.ticks);
                 refresh();
             });
@@ -234,6 +237,8 @@ class MacroEditor : public geode::Popup {
                 in.erase(std::remove_if(in.begin(), in.end(), [t](xyz::Input const& i) { return i.tick > t; }), in.end());
                 auto& fx = m_m.fixes;
                 fx.erase(std::remove_if(fx.begin(), fx.end(), [t](xyz::Fix const& f) { return f.tick > t; }), fx.end());
+                auto& tc = m_m.tpsChanges;
+                tc.erase(std::remove_if(tc.begin(), tc.end(), [t](xyz::TpsChange const& c) { return c.tick > t; }), tc.end());
                 m_m.ticks = std::min(m_m.ticks, t);
                 cleanInputs();
                 refresh();
@@ -264,6 +269,7 @@ class MacroEditor : public geode::Popup {
             auto s = std::move(m_undo.back());
             m_undo.pop_back();
             m_m.inputs = std::move(s.in);
+            m_m.tpsChanges = std::move(s.tc);
             m_m.ticks = s.ticks;
             if (s.hasFx) m_m.fixes = std::move(s.fx);
             m_dirty = true;

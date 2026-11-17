@@ -1,6 +1,7 @@
 // Wave Drag Fix, ported from NyteLyte's geode-wave-trail-drag-fix (GPL-3.0,
 // https://github.com/nytelytee/geode-wave-trail-drag-fix) with syzzi's updateRotation idea.
 #include "../core/State.hpp"
+#include "Vis.hpp"
 #include <Geode/modify/PlayerObject.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/GJBaseGameLayer.hpp>
@@ -11,6 +12,15 @@ using namespace geode::prelude;
 namespace {
 bool waveOn() { return xyz::cfg().waveDragFix && !xyz::rt().simulating && !LevelEditorLayer::get(); }
 bool waveOn(PlayerObject* p) { return p && p->m_gameLayer && waveOn(); }
+}
+
+namespace xyz::vis {
+// the wave trail was running ahead of the wave after a fix, no more of that >:( !!
+// (fixes move the player after the game already placed the trail end, so we put it back on the wave <3)
+void waveSync(PlayerObject* p) {
+    if (!waveOn(p) || !p->m_isDart || !p->m_waveTrail) return;
+    p->m_waveTrail->m_currentPoint = p->getRealPosition();
+}
 }
 
 class $modify(XyzWavePlayer, PlayerObject) {

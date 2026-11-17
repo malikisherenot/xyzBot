@@ -27,7 +27,7 @@ class $modify(XyzLegacyPlayer, PlayerObject) {
     }
 };
 
-// Stabilizers, pad clicks and flip-input-on-death. Behaviour modelled on Scarlet Utils; code written for xyzBot.
+// stabilisers, was not fun :⁠'⁠(
 namespace xyz {
 static void swiftClick(GJBaseGameLayer* gl, int p) {
     pressButton(gl, true, p);

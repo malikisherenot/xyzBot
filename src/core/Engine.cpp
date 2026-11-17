@@ -172,6 +172,18 @@ static bool alignPlayback() {
         return false;
     }
     uint32_t t = m.fixes[idx].tick + 1;
+    if (m.anchor > 0) {
+        // I love anchors
+        for (size_t i = idx; i-- > 0;) {
+            if (m.fixes[i].p2) continue;
+            auto& a = m.fixes[i]; auto& b = m.fixes[idx];
+            if (b.x > a.x && b.tick > a.tick + 1) {
+                float fr = std::clamp((cur - a.x) / (b.x - a.x), 0.f, 1.f);
+                t = a.tick + (uint32_t)std::lround(fr * (float)(b.tick - a.tick)) + 1;
+            }
+            break;
+        }
+    }
     r.tick = t;
     r.nextIn = 0; r.nextFix = 0;
     r.seekHeld.fill(false);
@@ -184,10 +196,27 @@ static bool alignPlayback() {
     return true;
 }
 
+// tps changes are tuff
+static void applyTpsChanges(uint32_t tick) {
+    auto& r = rt();
+    while (r.nextTps < r.play.tpsChanges.size() && r.play.tpsChanges[r.nextTps].tick <= tick) {
+        cfg().tpsVal = (float)std::max<uint32_t>(1, r.play.tpsChanges[r.nextTps].tps);
+        r.nextTps++;
+    }
+}
+
+void resyncTps() {
+    auto& r = rt();
+    cfg().tpsVal = (float)std::max<uint32_t>(1, r.play.tps);
+    r.nextTps = 0;
+    applyTpsChanges(r.tick);
+}
+
 static void rewind() {
     auto& r = rt();
     backstepClear();
-    r.tick = 0; r.nextIn = 0; r.nextFix = 0; r.held.fill(false); r.leftover = 0;
+    if (cfg().trailClear) vis::trailClear(); // fresh attempt, fresh trail
+    r.tick = 0; r.nextIn = 0; r.nextFix = 0; r.nextTps = 0; r.held.fill(false); r.leftover = 0;
     r.gameHeld = {false, false}; r.acHeld = {false, false}; r.ac[0] = Ac{}; r.ac[1] = Ac{};
     r.cpsT[0].clear(); r.cpsT[1].clear(); r.maxCps[0] = r.maxCps[1] = 0;
     r.frozen = false; r.autosaveAcc = 0.0; r.seekPending = false;
@@ -205,6 +234,7 @@ static void rewind() {
     } else if (r.mode == Mode::Play) {
         GameToolbox::fast_srand(r.play.seed);
         if (!alignPlayback()) stopAll(false);
+        else resyncTps();
     }
 }
 
@@ -215,6 +245,8 @@ static void applyFix(GJBaseGameLayer* pl, Fix const& f) {
     p->setPosition({f.x, f.y});
     if (!std::isnan(f.rot)) p->setRotation(f.rot);
     if (!std::isnan(f.yv)) p->m_yVelocity = f.yv;
+    // glue the wave trail back to the wave, it looks so much better now (^o^)/
+    vis::waveSync(p);
 }
 
 static void feed(GJBaseGameLayer* gl) {
@@ -239,30 +271,26 @@ static void feed(GJBaseGameLayer* gl) {
     }
 }
 
-static void takeOver() {
-    auto& r = rt();
-    if (r.mode != Mode::Play) return;
-    Macro m = r.play;
-    m.inputs.resize(std::min(r.nextIn, m.inputs.size()));
-    m.fixes.resize(std::min(r.nextFix, m.fixes.size()));
-    m.ticks = r.tick;
-    r.rec = std::move(m);
-    r.continueName = r.playName;
-    r.mode = Mode::Record;
-    r.seekPending = false;
-    Notification::create(fmt::format("Recording from tick {}", r.tick), NotificationIcon::Info)->show();
-}
-
-bool takeOverNow() {
-    if (rt().mode != Mode::Play) return false;
-    takeOver();
-    return true;
-}
-
 static void pushFixes(GJBaseGameLayer* pl, uint32_t tick) {
     auto& r = rt();
+    bool anchor = cfg().accuracy == 3;
+    auto have = [&](bool p2) {
+        size_t n = 0;
+        for (size_t i = r.rec.fixes.size(); i-- > 0 && n < 2; ++n) {
+            if (r.rec.fixes[i].tick < tick) break;
+            if (r.rec.fixes[i].tick == tick && r.rec.fixes[i].p2 == p2) return true;
+        }
+        return false;
+    };
     auto add = [&](PlayerObject* p, bool p2) {
-        if (p) r.rec.fixes.push_back({tick, p2, p->getPositionX(), p->getPositionY(), p->getRotation(), (float)p->m_yVelocity});
+        if (!p) return;
+        Fix f{tick, p2, p->getPositionX(), p->getPositionY(), p->getRotation(), (float)p->m_yVelocity};
+        if (anchor) {
+            if (have(p2)) return;
+            f.x = anchorSnap(f.x, 0); f.y = anchorSnap(f.y, 1); f.rot = anchorSnap(f.rot, 2); f.yv = anchorSnap(f.yv, 3);
+            r.rec.anchor = (uint32_t)std::clamp(cfg().anchorK, 2, 64);
+        }
+        r.rec.fixes.push_back(f);
     };
     if (covers(cfg().recPlayers, false)) add(pl->m_player1, false);
     if (pl->m_gameState.m_isDualMode && covers(cfg().recPlayers, true)) add(pl->m_player2, true);
@@ -278,9 +306,8 @@ static void closeTick(GJBaseGameLayer* pl) {
             r.nextFix++;
         }
         r.tick++;
-        if (r.tick > r.play.ticks + 1 && cfg().continueEnd) {
-            takeOver();
-        } else if (r.tick > r.play.ticks + 1) {
+        applyTpsChanges(r.tick);
+        if (r.tick > r.play.ticks + 1) {
             bool seq = cfg().seqOn && !cfg().seq.empty();
             stopAll(false);
             if (seq) queueInMainThread([] { seqNext(); });
@@ -293,6 +320,7 @@ static void closeTick(GJBaseGameLayer* pl) {
         }
     } else if (r.mode == Mode::Record) {
         if (cfg().accuracy == 2) pushFixes(pl, r.tick);
+        else if (cfg().accuracy == 3 && r.tick % (uint32_t)std::clamp(cfg().anchorK, 2, 64) == 0) pushFixes(pl, r.tick);
         r.tick++;
         r.rec.ticks = r.tick;
     } else {
@@ -326,7 +354,6 @@ class $modify(XyzGL, GJBaseGameLayer) {
         if (ext && c.stepper && !r.bsReplay) backstepLog(r.tick, button, down, p1);
         if (ext && c.swapInput) p1 = !p1;
         bool p2 = !p1;
-        if (r.mode == Mode::Play && ext && c.takeOver && button >= 1 && button <= 3 && down) takeOver();
         if (r.mode == Mode::Play && !r.feeding && !r.resetting && c.blockInputs && covers(c.playPlayers, p2)) return;
         if (ext && button == 1 && !down && c.autoSwift && r.mode != Mode::Play && !takeover()) return;
         if (ext && button == 1) {
@@ -335,7 +362,7 @@ class $modify(XyzGL, GJBaseGameLayer) {
             if (takeover() && r.mode != Mode::Play) return;
         }
         if (r.mode == Mode::Record && !r.resetting && button >= 1 && button <= 3 && covers(c.recPlayers, p2)) {
-            if (c.accuracy == 1 && r.tick > 0 && (r.rec.fixes.empty() || r.rec.fixes.back().tick < r.tick - 1)) pushFixes(this, r.tick - 1);
+            if ((c.accuracy == 1 || c.accuracy == 3) && r.tick > 0 && (r.rec.fixes.empty() || r.rec.fixes.back().tick < r.tick - 1)) pushFixes(this, r.tick - 1);
             r.held[hi(button, p2)] = down;
             r.rec.inputs.push_back({r.tick, (uint8_t)button, down, p2});
         }
@@ -384,6 +411,7 @@ class $modify(XyzPL, PlayLayer) {
         r.resetting = true; r.loadedCp = false;
         PlayLayer::resetLevel();
         r.resetting = false;
+        if (cfg().trailClear) vis::trailClear(); // the old trail was staying after death, not anymore!!
         if (!r.loadedCp) rewind();
         if (!r.bsLoad) flipOnReset();
     }
@@ -433,6 +461,7 @@ class $modify(XyzPL, PlayLayer) {
             r.held = live;
         } else {
             r.nextIn = s.nextIn; r.nextFix = s.nextFix;
+            resyncTps();
             r.feeding = true;
             for (size_t i = 0; i < 6; ++i)
                 if (live[i] != s.held[i]) GJBaseGameLayer::handleButton(s.held[i], i % 3 + 1, i < 3);
@@ -484,6 +513,12 @@ class $modify(XyzEditorLayer, LevelEditorLayer) {
         if (p && noclipFor(p, this)) return;
         LevelEditorLayer::destroyPlayer(p, o);
     }
+
+    // the editor only ticked the hitboxes while playtesting, now they show up while you build too (^o^)/
+    void update(float dt) {
+        LevelEditorLayer::update(dt);
+        if (m_playbackMode != PlaybackMode::Playing) vis::refreshEditor(this);
+    }
 };
 
 class $modify(XyzEditorUI, EditorUI) {
@@ -518,7 +553,6 @@ void seqNext() {
 
 bool startRecord() {
     auto& r = rt();
-    r.continueName.clear();
     if (auto pl = PlayLayer::get()) {
         r.mode = Mode::Record;
         pl->resetLevelFromStart();
@@ -542,8 +576,6 @@ bool startPlay(std::string const& name) {
     if (!r.tpsOverridden) { r.prevTpsVal = cfg().tpsVal; r.savedTps = cfg().tps; }
     cfg().tps = true; cfg().tpsVal = (float)r.play.tps;
     r.tpsOverridden = true;
-    r.playName = name;
-    r.continueName.clear();
     r.mode = Mode::Play;
     if (pl) pl->resetLevelFromStart();
     else Notification::create(activeLayer() ? "Restart the playtest to begin playback" : "Playback armed: start the playtest", NotificationIcon::Info)->show();
@@ -555,13 +587,12 @@ void stopAll(bool save) {
     if (r.mode == Mode::Off) return;
     if (r.mode == Mode::Play && isRendering()) renderNotifyEnd();
     if (r.mode == Mode::Record && save && !r.rec.inputs.empty()) {
-        auto name = r.continueName.empty() ? macroFileName() : r.continueName;
+        auto name = macroFileName();
         if (cfg().noOverwrite) name = uniqueMacroName(name);
         saveMacro(r.rec, name);
         Notification::create("Macro saved", NotificationIcon::Success)->show();
     }
     if (r.tpsOverridden) { cfg().tps = r.savedTps; cfg().tpsVal = r.prevTpsVal; r.tpsOverridden = false; }
-    r.continueName.clear();
     r.mode = Mode::Off;
     r.held.fill(false);
 }

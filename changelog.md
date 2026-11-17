@@ -1,20 +1,23 @@
-# Changelog
+# Changelog ＼⁠(⁠^⁠o⁠^⁠)⁠／
 
-## v1.18.0
-- Removed the in-game installer section and its link; xyzBot is now installed through Geode only
-- Replaced the bundled Arial font, which cannot be redistributed, with DejaVu Sans Condensed Oblique (the "Arial" font choice is now "Italic")
-- The Discord button is now "Report a bug" and opens the GitHub issue tracker
-- The floating button and frame stepper bar are attached once at startup instead of being checked every frame
-- Text macro import no longer relies on exceptions for a bad `tps=` line
-- Filesystem calls use error codes and Geode's path helpers
-- Removed the Geode node IDs dependency, which was not used
-- The FFmpeg API mod is now a suggested dependency (Android only)
+## v1.19.0
+- Manual video height setting
+- Removed Take Over and Continue After Finish, bye bye (;_;)
+- The frame stepper panel is a tiny mini-menu now
+- Slope hitboxes were rewritten
+- Macros and renders are saved in geode-persistent now, old ones move over by themselves
+- Removed the in-game installer
+- Replaced the bundled Arial font
+- The Discord button is now "Report a bug"
+- The floating button and frame stepper bar are attached once at startup
+- Removed the Geode node IDs dependency
+- The FFmpeg API mod is now a suggested dependency
 
 ## v1.17.0-beta.2
 - Added the Macro Editor (Edit button in the Macros tab)
 - Added a Back button to the frame stepper (now at the bottom right)
 - Added the GD Small font
-- Redesigned the Glass UI: side tabs with an accent line, a header bar, the settings in two columns of cards, sliders for number settings and dropdowns for choices
+- Redesigned the Glass UI
 - Added a Discord button to the menu
 - Removed the auto updater
 - Fixed the menu animation playing twice

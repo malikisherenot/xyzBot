@@ -36,7 +36,7 @@ size_t hi(int button, bool p2) { return (p2 ? 3 : 0) + std::clamp(button, 1, 3) 
 
 void drop(Save& s) { if (s.cp) s.cp->release(); s.cp = nullptr; }
 
-// Echo (backstep.cpp): objects whose "used" flags are not part of a GD checkpoint
+// thanks to echo 🤑
 std::vector<Used> usedObjects(PlayLayer* play) {
     std::vector<Used> out;
     auto* p1 = play->m_player1;
@@ -150,6 +150,7 @@ bool backstepLoad(PlayLayer* pl, int n, uint32_t& k) {
 
     GameToolbox::fast_srand(s.seed);
     r.tick = s.tick; r.nextIn = s.nextIn; r.nextFix = s.nextFix; r.held = s.held;
+    if (r.mode == Mode::Play) resyncTps();
     if (r.mode == Mode::Record) {
         auto& in = r.rec.inputs; auto& fx = r.rec.fixes;
         in.erase(std::remove_if(in.begin(), in.end(), [&](auto& i) { return i.tick > s.tick; }), in.end());

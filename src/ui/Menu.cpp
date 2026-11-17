@@ -177,6 +177,7 @@ static std::string helpText(std::string const& k) {
         {"Show Hitboxes", "Draws the hitboxes of the player and the level's objects."},
         {"Hitbox Trail", "Draws the player's hitboxes from the last few moments."},
         {"Trail Length", "How many past ticks the hitbox trail keeps."},
+        {"Clear Trail On Death", "Wipes the hitbox trail when you respawn. Turn it off to keep the old trail around."},
         {"Show Trajectory", "Previews where the player will go if you hold or release right now."},
         {"Length", "How many ticks ahead the preview looks."},
         {"Layout Mode (reload level)", "Strips decoration so only gameplay objects show. Takes effect when the level loads again."},
@@ -201,8 +202,6 @@ static std::string helpText(std::string const& k) {
         {"Size", "How large the label is."},
         {"Opacity", "How see-through the label is."},
         {"Red", "Red amount, from 0 to 255."}, {"Green", "Green amount, from 0 to 255."}, {"Blue", "Blue amount, from 0 to 255."},
-        {"Take Over On Input", "While a macro plays, your first tap takes control: the macro stops there and keeps recording what you do. The part already played is kept."},
-        {"Continue After Finish", "When a macro reaches its end, it keeps recording instead of stopping, so you can add more to it."},
         {"Fix Rotation Bug", "Fixes the ship, UFO, wave and swing tilt looking wrong at high TPS. Only changes how it looks, not the physics."},
         {"Wave Drag Fix", "Fixes the wave trail on D blocks (drag), slopes, portals and spider orbs, also at high TPS. Only changes the trail, not the physics."},
         {"Trajectory Autoclicker", "Every tick it simulates what happens if the current input state continues. If that dies within the lookahead, it holds, releases or taps instead, whichever survives longest. Works while recording, so the clicks are saved in the macro. Orbs, pads and portals are not simulated yet."},
@@ -259,6 +258,8 @@ static std::string helpText(std::string const& k) {
         {"UFO Threshold P1", "How far Player 1's UFO may drift from the target."}, {"UFO Threshold P2", "How far Player 2's UFO may drift from the target."},
         {"Macro To Render", "The macro that plays while rendering. 'None' lets you play the level yourself."},
         {"Width", "Video width in pixels. The height follows the shape of your screen."},
+        {"Auto Height (match screen)", "When on, video height is calculated from the game's current window aspect ratio. Turn it off to choose a fixed height."},
+        {"Video Height", "The renderer's output height in pixels. Adjust the slider or use the arrows; changing it switches Auto Height off."},
         {"FPS", "Frames per second of the video."},
         {"Bitrate (Mbps)", "Video quality. Higher looks better and makes a bigger file."},
         {"Codec", "Video encoder. Auto picks the best one your device offers."},
@@ -289,6 +290,13 @@ static CCMenuItemSpriteExtra* makeHelp(std::string title, std::string text) {
     return CCMenuItemExt::createSpriteExtra(node, [title, text](auto) { FLAlertLayer::create(title.c_str(), text, "OK")->show(); });
 }
 
+static int autoRenderHeight() {
+    auto ws = CCDirector::get()->getWinSize();
+    if (ws.width <= 0.f) return 720;
+    int width = std::clamp(cfg().renderW, 320, 3840) & ~1;
+    return (int)std::lround(width * ws.height / ws.width) & ~1;
+}
+
 static std::function<void(double)> numSetter(std::string const& k) {
     auto& c = cfg();
     auto F = [](float* p, float lo, float hi) { return std::function<void(double)>([p, lo, hi](double v) { *p = std::clamp((float)v, lo, hi); saveCfg(); }); };
@@ -307,6 +315,7 @@ static std::function<void(double)> numSetter(std::string const& k) {
     if (k == "UFO Threshold P1") return F(&c.sUfoThr[0], 0.f, 300.f);
     if (k == "UFO Threshold P2") return F(&c.sUfoThr[1], 0.f, 300.f);
     if (k == "Extra Clicks Amount") return I(&c.extraAmt, 1, 10);
+    if (k == "Anchor Spacing (ticks)") return I(&c.anchorK, 2, 64);
     if (k == "Steps Per +N Button") return I(&c.stepN, 1, 240);
     if (k == "Hold Speed (ticks/frame)") return I(&c.holdRate, 1, 16);
     if (k == "Extra Weight (%)") return I(&c.legacyShipPct, 0, 100);
@@ -316,6 +325,15 @@ static std::function<void(double)> numSetter(std::string const& k) {
     if (k == "Click Lookahead") return I(&c.trajLook, 1, 240);
     if (k == "Interval (s)") return I(&c.autosaveSec, 10, 3600);
     if (k == "Width") return I(&c.renderW, 320, 3840);
+    if (k == "Video Height") {
+        auto* height = &c.renderH;
+        auto* automatic = &c.renderAutoH;
+        return [height, automatic](double v) {
+            *height = std::clamp((int)std::lround(v), 320, 3840) & ~1;
+            *automatic = false;
+            saveCfg();
+        };
+    }
     if (k == "FPS") return I(&c.renderFps, 10, 240);
     if (k == "Bitrate (Mbps)") return I(&c.renderBitrate, 1, 200);
     if (k == "End Tail (s)") return I(&c.renderTail, 0, 30);
@@ -336,6 +354,7 @@ static bool sliderInfo(std::string const& k, double& lo, double& hi, std::functi
     if (k == "UFO Threshold P1") return F(&c.sUfoThr[0], 0, 300);
     if (k == "UFO Threshold P2") return F(&c.sUfoThr[1], 0, 300);
     if (k == "Extra Clicks Amount") return I(&c.extraAmt, 1, 10);
+    if (k == "Anchor Spacing (ticks)") return I(&c.anchorK, 2, 64);
     if (k == "Steps Per +N Button") return I(&c.stepN, 1, 240);
     if (k == "Hold Speed (ticks/frame)") return I(&c.holdRate, 1, 16);
     if (k == "Extra Weight (%)") return I(&c.legacyShipPct, 0, 100);
@@ -344,6 +363,15 @@ static bool sliderInfo(std::string const& k, double& lo, double& hi, std::functi
     if (k == "Lookahead Ticks") return I(&c.pdLook, 1, 10);
     if (k == "Click Lookahead") return I(&c.trajLook, 1, 240);
     if (k == "FPS") return I(&c.renderFps, 10, 240);
+    if (k == "Video Height") {
+        lo = 320;
+        hi = 3840;
+        val = [] {
+            auto& c = cfg();
+            return (double)(c.renderAutoH ? autoRenderHeight() : c.renderH);
+        };
+        return true;
+    }
     if (k == "Bitrate (Mbps)") return I(&c.renderBitrate, 1, 200);
     if (k == "End Tail (s)") return I(&c.renderTail, 0, 30);
     return false;
@@ -697,7 +725,7 @@ void XyzMenu::doClose(float) { Popup::onClose(nullptr); }
 static char const* TABS[] = {"Bot", "Physics", "Visuals", "Macros", "Labels", "Assist", "Theme", "Render"};
 static constexpr int NTABS = 8;
 static char const* PLAYERS[] = {"Both", "Player 1 only", "Player 2 only"};
-static char const* ACCURACY[] = {"Vanilla", "Input Fixes", "Frame Fixes"};
+static char const* ACCURACY[] = {"Vanilla", "Input Fixes", "Frame Fixes", "Anchor Fixes"};
 static float tabPitch(float menuH) { return std::min(29.f, (menuH - 52.f - 8.f) / NTABS); }
 
 void XyzMenu::moveHl(bool animate) {
@@ -865,6 +893,7 @@ void XyzMenu::rebuild(bool animate) {
                 auto& v = cfg().tpsVal; float s = v >= 10000 ? 5000 : v >= 1000 ? 500 : v >= 240 ? 60 : 10;
                 v = std::clamp(v + d * s, 1.f, 1000000.f); saveCfg(); });
             num("Frame Budget (ms)", [] { return fmt::format("{}", (int)cfg().budgetMs); }, [](int d) { cfg().budgetMs = std::clamp(cfg().budgetMs + d, 1.f, 100.f); saveCfg(); });
+            tog("Lock Delta", c.lockDelta, [](bool v) { cfg().lockDelta = v; saveCfg(); });
             sec("OPTIMIZATION");
             tog("Fast Sub-Ticks", c.fastSub, [](bool v) { cfg().fastSub = v; saveCfg(); });
             tog("Skip Visibility On Sub-Ticks", c.skipVis, [](bool v) { cfg().skipVis = v; saveCfg(); });
@@ -953,6 +982,7 @@ void XyzMenu::rebuild(bool animate) {
             tog("Special / Rotated", c.hbSpecial && c.hbRotated, [](bool v) { cfg().hbSpecial = cfg().hbRotated = v; saveCfg(); });
         } else if (sub == "trail") {
             sec("TRAIL SETTINGS");
+            tog("Clear Trail On Death", c.trailClear, [](bool v) { cfg().trailClear = v; saveCfg(); });
             num("Trail Length", [] { return fmt::format("{}", cfg().trailLen); }, [](int d) { cfg().trailLen = std::clamp(cfg().trailLen + d * 50, 10, 2000); saveCfg(); });
         } else if (sub == "traj") {
             sec("TRAJECTORY SETTINGS");
@@ -994,15 +1024,13 @@ void XyzMenu::rebuild(bool animate) {
         std::string st = r.mode == Mode::Record ? "Recording" : r.mode == Mode::Play ? "Playing" : "Idle";
         sec("BOT");
         txt("State: " + st);
-        pills({{"Record", [this] { startRecord(); this->later(false); }}, {"Stop", [this] { stopAll(true); this->later(false); }}, {"Back", [] { stepBack(1); }}, {"Step", [] { stepOnce(); }},
-               {"Take Over", [this] {
-                    if (takeOverNow()) this->onClose(nullptr);
-                    else Notification::create("Nothing is playing", NotificationIcon::Error)->show(); }}});
+        pills({{"Record", [this] { startRecord(); this->later(false); }}, {"Stop", [this] { stopAll(true); this->later(false); }}, {"Back", [] { stepBack(1); }}, {"Step", [] { stepOnce(); }}});
         tog("Frame Stepper", c.stepper, [](bool v) { cfg().stepper = v; }, "stepper");
         tog("Noclip", c.noclip, [](bool v) { cfg().noclip = v; saveCfg(); }, "noclip");
         sec("ACCURACY");
-        num("Accuracy", [] { return std::string(ACCURACY[std::clamp(cfg().accuracy, 0, 2)]); }, [](int d) { auto& v = cfg().accuracy; v = (v + d + 3) % 3; saveCfg(); });
-        opt(std::vector<std::string>{ACCURACY[0], ACCURACY[1], ACCURACY[2]}, [] { return std::clamp(cfg().accuracy, 0, 2); }, [](int v) { cfg().accuracy = v; saveCfg(); });
+        num("Accuracy", [] { return std::string(ACCURACY[std::clamp(cfg().accuracy, 0, 3)]); }, [](int d) { auto& v = cfg().accuracy; v = (v + d + 4) % 4; saveCfg(); });
+        opt(std::vector<std::string>{ACCURACY[0], ACCURACY[1], ACCURACY[2], ACCURACY[3]}, [] { return std::clamp(cfg().accuracy, 0, 3); }, [](int v) { cfg().accuracy = v; saveCfg(); });
+        num("Anchor Spacing (ticks)", [] { return fmt::format("{}", cfg().anchorK); }, [](int d) { cfg().anchorK = std::clamp(cfg().anchorK + d * 2, 2, 64); saveCfg(); });
         tog("Ignore Level Check", c.ignoreLevel, [](bool v) { cfg().ignoreLevel = v; saveCfg(); });
         tog("Block Inputs In Playback", c.blockInputs, [](bool v) { cfg().blockInputs = v; saveCfg(); });
         sec("RECORDING");
@@ -1013,8 +1041,6 @@ void XyzMenu::rebuild(bool animate) {
         sec("PLAYBACK");
         num("Play Players", [] { return std::string(PLAYERS[std::clamp(cfg().playPlayers, 0, 2)]); }, [](int d) { auto& v = cfg().playPlayers; v = (v + d + 3) % 3; saveCfg(); });
         opt(std::vector<std::string>{PLAYERS[0], PLAYERS[1], PLAYERS[2]}, [] { return std::clamp(cfg().playPlayers, 0, 2); }, [](int v) { cfg().playPlayers = v; saveCfg(); });
-        tog("Take Over On Input", c.takeOver, [](bool v) { cfg().takeOver = v; saveCfg(); });
-        tog("Continue After Finish", c.continueEnd, [](bool v) { cfg().continueEnd = v; saveCfg(); });
         tog("Sequence", c.seqOn, [](bool v) { cfg().seqOn = v; saveCfg(); }, "seq");
         sec("AUTOMATION");
         tog("Autosave While Recording", c.autosave, [](bool v) { cfg().autosave = v; saveCfg(); }, "autosave");
@@ -1198,11 +1224,31 @@ void XyzMenu::rebuild(bool animate) {
             cfg().renderMacro = slot == 0 ? std::string() : names[slot - 1];
             saveCfg(); });
         sec("VIDEO");
-        txt(fmt::format("Height: {} (follows the shape of your screen)", [] {
-            auto ws = CCDirector::get()->getWinSize();
-            return (int)std::lround(std::clamp(cfg().renderW, 320, 3840) / 2 * 2 * ws.height / ws.width) / 2 * 2;
-        }()));
         num("Width", [] { return fmt::format("{}", cfg().renderW); }, [](int d) { cfg().renderW = std::clamp(cfg().renderW + d * 160, 320, 3840); saveCfg(); });
+        tog("Auto Height (match screen)", c.renderAutoH, [](bool v) {
+            auto& c = cfg();
+            if (!v && c.renderAutoH) c.renderH = std::clamp(autoRenderHeight(), 320, 3840) & ~1;
+            c.renderAutoH = v;
+            saveCfg();
+        });
+        num("Video Height", [] {
+            return cfg().renderAutoH
+                ? fmt::format("Auto ({} px)", autoRenderHeight())
+                : fmt::format("{} px", cfg().renderH);
+        }, [](int d) {
+            auto& c = cfg();
+            if (c.renderAutoH) {
+                c.renderH = std::clamp(autoRenderHeight(), 320, 3840) & ~1;
+                c.renderAutoH = false;
+            }
+            c.renderH = std::clamp(c.renderH + d * 120, 320, 3840) & ~1;
+            saveCfg();
+        });
+        rng(320, 3840, [] {
+            auto& c = cfg();
+            return (double)(c.renderAutoH ? autoRenderHeight() : c.renderH);
+        });
+        if (c.renderAutoH) txt(fmt::format("Automatic height: {} px", autoRenderHeight()));
         num("FPS", [] { return fmt::format("{}", cfg().renderFps); }, [](int d) { cfg().renderFps = std::clamp(cfg().renderFps + d * 10, 10, 240); saveCfg(); });
         num("Bitrate (Mbps)", [] { return fmt::format("{}", cfg().renderBitrate); }, [](int d) { cfg().renderBitrate = std::clamp(cfg().renderBitrate + d, 1, 200); saveCfg(); });
         num("Codec", [] { return std::string(CODEC_NAMES[std::clamp(cfg().renderCodec, 0, 4)]); }, [](int d) { auto& v = cfg().renderCodec; v = (v + d + 5) % 5; saveCfg(); });
@@ -1496,7 +1542,6 @@ class $modify(XyzKeys, CCKeyboardDispatcher) {
             if (key == KEY_F6) { XyzMenu::toggle(); return true; }
             if (key == KEY_F7 && PlayLayer::get()) { stepOnce(); return true; }
             if (key == KEY_F9 && PlayLayer::get()) { stepBack(1); return true; }
-            if (key == KEY_F8) { takeOverNow(); return true; }
         }
         return CCKeyboardDispatcher::dispatchKeyboardMSG(key, down, repeat, ts);
     }

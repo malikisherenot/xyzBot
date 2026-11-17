@@ -2,6 +2,7 @@
 #include <Geode/Geode.hpp>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -11,6 +12,13 @@ enum class Mode : uint8_t { Off, Record, Play };
 
 struct Input { uint32_t tick; uint8_t button; bool down; bool p2; };
 struct Fix { uint32_t tick; bool p2; float x, y, rot, yv; };
+struct TpsChange { uint32_t tick; uint32_t tps; }; // from this tick on, the macro runs at this TPS
+// Anchor Fixes store x, y, rotation and y-velocity on a fixed grid (units per step, in that order).
+inline constexpr double ANCHOR_SCALE[4] = {1024.0, 1024.0, 256.0, 4096.0};
+inline float anchorSnap(float v, int c) {
+    if (std::isnan(v)) return v;
+    return (float)((double)std::llround((double)v * ANCHOR_SCALE[c]) / ANCHOR_SCALE[c]);
+}
 struct Macro {
     std::vector<Input> inputs;
     std::vector<Fix> fixes;
@@ -19,6 +27,8 @@ struct Macro {
     uint64_t seed = 0;
     int64_t levelId = 0;
     float startX = 0.f;
+    std::vector<TpsChange> tpsChanges; // sorted by tick, never at tick 0
+    uint32_t anchor = 0; // spacing of Anchor Fixes in ticks, 0 = not an anchor macro
 };
 
 struct Cfg {
@@ -30,11 +40,14 @@ struct Cfg {
     bool stepper = false;
     bool noclip = false;
     int accuracy = 2;
+    bool lockDelta = false; // always use the fixed-step loop, even at 240 TPS
+    int anchorK = 16;
     bool fastSub = true, skipVis = false;
     bool ignoreLevel = false;
     bool hitboxes = false;
     bool hbPlayer = true, hbSolid = true, hbHazard = true, hbSpecial = true, hbRotated = true;
     bool trail = false;
+    bool trailClear = true;
     int trailLen = 200;
     bool traj = false;
     int trajLen = 240;
@@ -59,10 +72,9 @@ struct Cfg {
     // Macro tools and the rotation fix (adapted from Echo, GPL-3.0)
     bool fixRotation = false;
     bool waveDragFix = false;
-    int renderW = 1280, renderFps = 60, renderBitrate = 12, renderCodec = 0, renderTail = 2;
-    bool renderAudio = true;
+    int renderW = 1280, renderH = 720, renderFps = 60, renderBitrate = 12, renderCodec = 0, renderTail = 2;
+    bool renderAutoH = true, renderAudio = true;
     std::string renderMacro;
-    bool takeOver = false, continueEnd = false;
     bool autoName = true, noOverwrite = false;
     int renameFmt = 0;
     int recPlayers = 0, playPlayers = 0;
@@ -115,7 +127,7 @@ struct Prof {
 struct Rt {
     Mode mode = Mode::Off;
     uint32_t tick = 0;
-    size_t nextIn = 0, nextFix = 0;
+    size_t nextIn = 0, nextFix = 0, nextTps = 0;
     Macro rec, play;
     std::array<bool, 6> held{};
     bool feeding = false, resetting = false, simulating = false, simDead = false;
@@ -143,7 +155,6 @@ struct Rt {
     size_t cpCount = 0;
     double autosaveAcc = 0.0;
     int seqIdx = -1;
-    std::string playName, continueName;
     bool tpsOverridden = false;
     bool padClick[2] = {false, false};
     bool clickedPad = false, optStart = false, optStop = false, optRing = false;
@@ -158,7 +169,6 @@ std::string macroFileName();
 std::string uniqueMacroName(std::string const& base);
 bool mergeMacros(std::string const& a, std::string const& b, std::string& outName);
 void seqNext();
-bool takeOverNow();
 bool renderAvailable();
 bool isRendering();
 float renderFps();
@@ -184,6 +194,8 @@ Rt& rt();
 void loadCfg();
 void saveCfg();
 float curTps();
+bool tpsDynamic();
+void resyncTps();
 
 struct RenderStats { bool on = false; double realSec = 0, videoSec = 0; long long frames = 0; int fps = 0; };
 RenderStats renderStats();
@@ -205,6 +217,7 @@ struct ProfFrame {
 };
 #define XYZ_TIMED(slot, ...) do { xyz::ProfScope xyzPs(slot); __VA_ARGS__; } while (0)
 
+std::filesystem::path persistDir(std::string const& sub); // geode-persistent/<this mod>/<sub>
 std::filesystem::path macroDir();
 std::vector<std::string> listMacros();
 bool saveMacro(Macro const& m, std::string const& name);
