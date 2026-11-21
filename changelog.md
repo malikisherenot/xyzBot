@@ -1,11 +1,19 @@
 # Changelog ＼⁠(⁠^⁠o⁠^⁠)⁠／
 
+## v2.0.0
+- Added Noclip Tint
+- Fixed Slope hitboxes
+- Fixed render results
+- Removed Anchor Fixes
+- Added Delta Fixes
+- Removed FFmpeg API dependency
 ## v1.19.0
 - Manual video height setting
-- Removed Take Over and Continue After Finish, bye bye (;_;)
-- The frame stepper panel is a tiny mini-menu now
-- Slope hitboxes were rewritten
-- Macros and renders are saved in geode-persistent now, old ones move over by themselves
+- Logging
+- Custom macro names
+- Frame stepper redesign
+- Removed Take Over and Continue After Finish
+- Macros and renders save to geode-persistent
 - Removed the in-game installer
 - Replaced the bundled Arial font
 - The Discord button is now "Report a bug"

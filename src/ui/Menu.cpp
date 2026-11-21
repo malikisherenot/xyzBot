@@ -177,6 +177,9 @@ static std::string helpText(std::string const& k) {
         {"Show Hitboxes", "Draws the hitboxes of the player and the level's objects."},
         {"Hitbox Trail", "Draws the player's hitboxes from the last few moments."},
         {"Trail Length", "How many past ticks the hitbox trail keeps."},
+        {"Logging", "Writes inputs, attempts and deaths to a log file in the mod's logs folder."},
+        {"Position Logging", "Also writes the player position, rotation and y-velocity. Large files when the interval is 1."},
+        {"Position Interval", "Ticks between position lines. 1 logs every tick."},
         {"Clear Trail On Death", "Wipes the hitbox trail when you respawn. Turn it off to keep the old trail around."},
         {"Show Trajectory", "Previews where the player will go if you hold or release right now."},
         {"Length", "How many ticks ahead the preview looks."},
@@ -198,7 +201,6 @@ static std::string helpText(std::string const& k) {
         {"Labels Enabled", "Shows or hides every on-screen label."},
         {"Enabled", "Shows or hides this label."},
         {"Anchor", "Which corner of the screen the label sits in."},
-        {"Font", "An italic sans font or the game's own fonts."},
         {"Size", "How large the label is."},
         {"Opacity", "How see-through the label is."},
         {"Red", "Red amount, from 0 to 255."}, {"Green", "Green amount, from 0 to 255."}, {"Blue", "Blue amount, from 0 to 255."},
@@ -213,6 +215,7 @@ static std::string helpText(std::string const& k) {
         {"Skip Visibility On Sub-Ticks", "Experimental. Also skips the object visibility refresh on ticks that are never drawn. Faster on big levels, turn off if anything looks wrong."},
         {"Record Players", "Which players get recorded. Pick one player to record the other later and merge the two macros."},
         {"Play Players", "Which players the macro controls during playback. You control the other player yourself."},
+        {"Auto Save", "When on, a finished recording saves by itself with the automatic name. When off, you are asked for a name every time a recording ends."},
         {"Auto Name Replay", "Names a new macro after the level. When off, it is called 'macro'."},
         {"Rename Format", "How a number is added to the name when No Overwrite is on."},
         {"No Overwrite", "A new recording gets a numbered name instead of replacing the macro with the same name."},
@@ -250,6 +253,7 @@ static std::string helpText(std::string const& k) {
         {"Flip Swift", "Flip with a quick tap instead of holding."},
         {"Noclip Player 1", "Noclip applies to Player 1."},
         {"Noclip Player 2", "Noclip applies to Player 2."},
+        {"Noclip Tint", "Flashes the screen red while noclip is saving you from a death."},
         {"Swift Clicks", "The autoclicker taps (press and release at once) instead of holding."},
         {"Straight Fly P1", "Use Auto Straight Fly on Player 1."}, {"Straight Fly P2", "Use Auto Straight Fly on Player 2."},
         {"Fly Threshold P1", "How much vertical speed is allowed before the ship is corrected."}, {"Fly Threshold P2", "How much vertical speed is allowed before the ship is corrected."},
@@ -265,7 +269,6 @@ static std::string helpText(std::string const& k) {
         {"Codec", "Video encoder. Auto picks the best one your device offers."},
         {"End Tail (s)", "How many seconds keep recording after the level ends."},
         {"Include Song Audio", "Adds the level's song to the video afterwards. It starts at the beginning of the song, so it may be off for StartPos or practice runs."},
-        {"Menu Font", "Switches the menu text between GD's own font (old) and an italic sans font (new)."},
         {"Button In Levels", "Shows the floating button while you play. Turn off to hide it until you pause."},
     };
     auto it = H.find(k);
@@ -315,7 +318,7 @@ static std::function<void(double)> numSetter(std::string const& k) {
     if (k == "UFO Threshold P1") return F(&c.sUfoThr[0], 0.f, 300.f);
     if (k == "UFO Threshold P2") return F(&c.sUfoThr[1], 0.f, 300.f);
     if (k == "Extra Clicks Amount") return I(&c.extraAmt, 1, 10);
-    if (k == "Anchor Spacing (ticks)") return I(&c.anchorK, 2, 64);
+    if (k == "Position Interval") return I(&c.logPosEvery, 1, 240);
     if (k == "Steps Per +N Button") return I(&c.stepN, 1, 240);
     if (k == "Hold Speed (ticks/frame)") return I(&c.holdRate, 1, 16);
     if (k == "Extra Weight (%)") return I(&c.legacyShipPct, 0, 100);
@@ -354,7 +357,7 @@ static bool sliderInfo(std::string const& k, double& lo, double& hi, std::functi
     if (k == "UFO Threshold P1") return F(&c.sUfoThr[0], 0, 300);
     if (k == "UFO Threshold P2") return F(&c.sUfoThr[1], 0, 300);
     if (k == "Extra Clicks Amount") return I(&c.extraAmt, 1, 10);
-    if (k == "Anchor Spacing (ticks)") return I(&c.anchorK, 2, 64);
+    if (k == "Position Interval") return I(&c.logPosEvery, 1, 240);
     if (k == "Steps Per +N Button") return I(&c.stepN, 1, 240);
     if (k == "Hold Speed (ticks/frame)") return I(&c.holdRate, 1, 16);
     if (k == "Extra Weight (%)") return I(&c.legacyShipPct, 0, 100);
@@ -363,6 +366,7 @@ static bool sliderInfo(std::string const& k, double& lo, double& hi, std::functi
     if (k == "Lookahead Ticks") return I(&c.pdLook, 1, 10);
     if (k == "Click Lookahead") return I(&c.trajLook, 1, 240);
     if (k == "FPS") return I(&c.renderFps, 10, 240);
+    if (k == "Width") return I(&c.renderW, 320, 3840);
     if (k == "Video Height") {
         lo = 320;
         hi = 3840;
@@ -390,7 +394,7 @@ public:
         m_cb = std::move(cb);
         if (!Popup::init(250.f, 135.f)) return false;
         this->setTitle(title);
-        m_input = TextInput::create(180.f, "Value", "bigFont.fnt");
+        m_input = TextInput::create(180.f, "Value", xyz::draw::fontOf());
         m_input->setFilter("0123456789.-");
         m_input->setString(cur);
         m_input->setPosition({125.f, 72.f});
@@ -398,7 +402,7 @@ public:
         auto menu = CCMenu::create();
         menu->setPosition({0, 0});
         m_mainLayer->addChild(menu);
-        auto ok = CCMenuItemExt::createSpriteExtra(ButtonSprite::create("Apply"), [this](auto) {
+        auto ok = CCMenuItemExt::createSpriteExtra(xyz::draw::restyleButton(ButtonSprite::create("Apply")), [this](auto) {
             auto r = geode::utils::numFromString<double>(m_input->getString());
             if (r.isErr()) { Notification::create("That is not a number", NotificationIcon::Error)->show(); return; }
             m_cb(r.unwrap());
@@ -515,14 +519,14 @@ public:
         m_cb = std::move(cb);
         if (!Popup::init(250.f, 135.f)) return false;
         this->setTitle(title);
-        m_input = TextInput::create(180.f, "Type to search", "bigFont.fnt");
+        m_input = TextInput::create(180.f, "Type to search", xyz::draw::fontOf());
         m_input->setString(cur);
         m_input->setPosition({125.f, 72.f});
         m_mainLayer->addChild(m_input);
         auto menu = CCMenu::create();
         menu->setPosition({0, 0});
         m_mainLayer->addChild(menu);
-        auto ok = CCMenuItemExt::createSpriteExtra(ButtonSprite::create("Search"), [this](auto) {
+        auto ok = CCMenuItemExt::createSpriteExtra(xyz::draw::restyleButton(ButtonSprite::create("Search")), [this](auto) {
             m_cb(m_input->getString());
             this->onClose(nullptr);
         });
@@ -531,6 +535,13 @@ public:
         return true;
     }
 };
+
+static std::string cleanMacroName(std::string s) {
+    for (auto& ch : s) if (std::string("\\/:*?\"<>|").find(ch) != std::string::npos) ch = '_';
+    while (!s.empty() && s.back() == ' ') s.pop_back();
+    while (!s.empty() && s.front() == ' ') s.erase(s.begin());
+    return s;
+}
 
 XyzMenu* XyzMenu::create() {
     auto r = new XyzMenu();
@@ -659,7 +670,7 @@ void XyzMenu::buildHead() {
     m_head->removeAllChildren();
     if (m_paper) {
         m_arrow = nullptr;
-        auto title = mkLabel(fmt::format("xyzBot v{}", Mod::get()->getVersion().toVString().substr(1)).c_str());
+        auto title = mkLabelBold(fmt::format("xyzBot v{}", Mod::get()->getVersion().toVString().substr(1)).c_str());
         sc(title, .42f); title->setPosition({m_w / 2, m_h - 17}); title->setOpacity(210);
         m_head->addChild(title);
         auto top = CCMenu::create();
@@ -688,7 +699,7 @@ void XyzMenu::buildHead() {
         bd->drawSegment({SW + 14.f, 10.f}, {SW + 14.f, m_h - 42.f}, 0.5f, pm(ccc4f(1, 1, 1, 0.09f)));
         m_head->addChild(bd, -1);
     }
-    auto title = mkLabel(fmt::format("xyzBot v{}", Mod::get()->getVersion().toVString().substr(1)).c_str());
+    auto title = mkLabelBold(fmt::format("xyzBot v{}", Mod::get()->getVersion().toVString().substr(1)).c_str());
     sc(title, .45f); title->setOpacity(225); title->setPosition({m_w / 2, m_h - 20});
     m_head->addChild(title);
     auto top = CCMenu::create();
@@ -725,7 +736,7 @@ void XyzMenu::doClose(float) { Popup::onClose(nullptr); }
 static char const* TABS[] = {"Bot", "Physics", "Visuals", "Macros", "Labels", "Assist", "Theme", "Render"};
 static constexpr int NTABS = 8;
 static char const* PLAYERS[] = {"Both", "Player 1 only", "Player 2 only"};
-static char const* ACCURACY[] = {"Vanilla", "Input Fixes", "Frame Fixes", "Anchor Fixes"};
+static char const* ACCURACY[] = {"Vanilla", "Input Fixes", "Frame Fixes", "Delta Accuracy"};
 static float tabPitch(float menuH) { return std::min(29.f, (menuH - 52.f - 8.f) / NTABS); }
 
 void XyzMenu::moveHl(bool animate) {
@@ -762,7 +773,7 @@ void XyzMenu::buildSide() {
         auto measure = [&](float sc0) {
             tot = 0.f;
             for (int i = 0; i < NTABS; ++i) {
-                auto l = mkLabel(TABS[i]);
+                auto l = mkLabelBold(TABS[i]);
                 sc(l, sc0);
                 tot += l->getScaledContentSize().width + 16.f;
             }
@@ -778,7 +789,7 @@ void XyzMenu::buildSide() {
         m_side->addChild(menu, 2);
         float x = 10.f, y = m_h - 34.f - 15.f;
         for (int i = 0; i < NTABS; ++i) {
-            auto l = mkLabel(TABS[i]);
+            auto l = mkLabelBold(TABS[i]);
             sc(l, s);
             float w = l->getScaledContentSize().width + 16.f;
             auto node = CCNode::create();
@@ -812,7 +823,7 @@ void XyzMenu::buildSide() {
     for (int i = 0; i < NTABS; ++i) {
         auto node = CCNode::create();
         node->setContentSize({SW + 4.f, 26});
-        auto l = mkLabel(TABS[i]);
+        auto l = mkLabelBold(TABS[i]);
         sc(l, .4f); l->setAnchorPoint({0, .5f}); l->setPosition({12.f, 13});
         node->addChild(l);
         m_tabLabels.push_back(l);
@@ -893,7 +904,10 @@ void XyzMenu::rebuild(bool animate) {
                 auto& v = cfg().tpsVal; float s = v >= 10000 ? 5000 : v >= 1000 ? 500 : v >= 240 ? 60 : 10;
                 v = std::clamp(v + d * s, 1.f, 1000000.f); saveCfg(); });
             num("Frame Budget (ms)", [] { return fmt::format("{}", (int)cfg().budgetMs); }, [](int d) { cfg().budgetMs = std::clamp(cfg().budgetMs + d, 1.f, 100.f); saveCfg(); });
-            tog("Lock Delta", c.lockDelta, [](bool v) { cfg().lockDelta = v; saveCfg(); });
+            tog("Lock Delta", c.lockDelta, [](bool v) {
+                cfg().lockDelta = v; saveCfg();
+                if (v) FLAlertLayer::create("Lock Delta", "This feature is experimental and shouldn't be used. It can leak accuracy and make macros desync. Only keep it on if you really know why you need it.", "OK")->show();
+            });
             sec("OPTIMIZATION");
             tog("Fast Sub-Ticks", c.fastSub, [](bool v) { cfg().fastSub = v; saveCfg(); });
             tog("Skip Visibility On Sub-Ticks", c.skipVis, [](bool v) { cfg().skipVis = v; saveCfg(); });
@@ -907,6 +921,7 @@ void XyzMenu::rebuild(bool animate) {
             sec("NOCLIP SETTINGS");
             tog("Noclip Player 1", c.noclipP[0], [](bool v) { cfg().noclipP[0] = v; saveCfg(); });
             tog("Noclip Player 2", c.noclipP[1], [](bool v) { cfg().noclipP[1] = v; saveCfg(); });
+            tog("Noclip Tint", c.noclipTint, [](bool v) { cfg().noclipTint = v; saveCfg(); });
         } else if (sub == "fade") {
             sec("LEVEL FADE SETTINGS");
             num("Fade In (s)", [] { return fmt::format("{:.1f}", cfg().fadeLevelIn); }, [](int d) { cfg().fadeLevelIn = std::clamp(cfg().fadeLevelIn + d * 0.1f, 0.f, 10.f); saveCfg(); });
@@ -990,6 +1005,11 @@ void XyzMenu::rebuild(bool animate) {
         } else if (sub == "pd") {
             sec("PREVENT DEATH SETTINGS");
             num("Lookahead Ticks", [] { return fmt::format("{}", cfg().pdLook); }, [](int d) { cfg().pdLook = std::clamp(cfg().pdLook + d, 1, 10); saveCfg(); });
+        } else if (sub == "logging") {
+            sec("LOGGING SETTINGS");
+            tog("Position Logging", c.logPositions, [](bool v) { cfg().logPositions = v; saveCfg(); });
+            num("Position Interval", [] { return fmt::format("{}", cfg().logPosEvery); }, [](int d) { cfg().logPosEvery = std::clamp(cfg().logPosEvery + d, 1, 240); saveCfg(); });
+            pills({{"Open Logs Folder", [] { if (!utils::file::openFolder(persistDir("logs"))) Notification::create("Could not open the folder", NotificationIcon::Error)->show(); }}});
         } else if (sub == "autosave") {
             sec("AUTOSAVE SETTINGS");
             num("Interval (s)", [] { return fmt::format("{}", cfg().autosaveSec); }, [](int d) { cfg().autosaveSec = std::clamp(cfg().autosaveSec + d * 30, 10, 3600); saveCfg(); });
@@ -1007,8 +1027,6 @@ void XyzMenu::rebuild(bool animate) {
             num("Anchor", [i] { static char const* a[] = {"Top Left", "Top Right", "Bottom Left", "Bottom Right"}; return std::string(a[std::clamp(labels::cfg(i).anchor, 0, 3)]); },
                 [i](int d) { auto& a = labels::cfg(i).anchor; a = (a + d + 4) % 4; labels::save(i); });
             opt(std::vector<std::string>{"Top Left", "Top Right", "Bottom Left", "Bottom Right"}, [i] { return std::clamp(labels::cfg(i).anchor, 0, 3); }, [i](int v) { labels::cfg(i).anchor = v; labels::save(i); });
-            num("Font", [i] { return std::string(labels::cfg(i).font == 0 ? "GD Big" : labels::cfg(i).font == 2 ? "GD Small" : "Italic"); }, [i](int) { auto& f = labels::cfg(i).font; f = (f + 1) % 3; labels::save(i); });
-            opt(std::vector<std::string>{"GD Big", "Italic", "GD Small"}, [i] { return std::clamp(labels::cfg(i).font, 0, 2); }, [i](int v) { labels::cfg(i).font = v; labels::save(i); });
             numS("Size", [i] { return fmt::format("{:.2f}", labels::cfg(i).scale); }, [i](int d) { auto& s = labels::cfg(i).scale; s = std::clamp(s + d * 0.05f, 0.1f, 2.f); labels::save(i); }, [i](double v) { labels::cfg(i).scale = std::clamp((float)v, 0.1f, 2.f); labels::save(i); });
             rng(0.1, 2.0, [i] { return (double)labels::cfg(i).scale; });
             numS("Opacity", [i] { return fmt::format("{:.2f}", labels::cfg(i).opacity); }, [i](int d) { auto& o = labels::cfg(i).opacity; o = std::clamp(o + d * 0.1f, 0.1f, 1.f); labels::save(i); }, [i](double v) { labels::cfg(i).opacity = std::clamp((float)v, 0.1f, 1.f); labels::save(i); });
@@ -1025,17 +1043,48 @@ void XyzMenu::rebuild(bool animate) {
         sec("BOT");
         txt("State: " + st);
         pills({{"Record", [this] { startRecord(); this->later(false); }}, {"Stop", [this] { stopAll(true); this->later(false); }}, {"Back", [] { stepBack(1); }}, {"Step", [] { stepOnce(); }}});
+        sec("MACRO");
+        custom([](CCMenu* menu, float y, float w) {
+            auto in = TextInput::create((w - 24.f) / .85f, "Macro name", xyz::draw::fontOf());
+            in->setScale(.85f);
+            in->setString(rt().macroName);
+            in->setCallback([](std::string const& v) { rt().macroName = v; });
+            in->setPosition({w / 2.f, y});
+            menu->addChild(in);
+        });
+        pills({{"Play", [this] {
+            auto& r = rt();
+            auto n = !r.pendingTmp.empty() ? r.pendingTmp : cleanMacroName(r.macroName);
+            if (n.empty()) return;
+            if (!startPlay(n)) Notification::create("Cannot play macro", NotificationIcon::Error)->show();
+            else this->onClose(nullptr);
+        }}, {"Save", [this] {
+            auto& r = rt();
+            if (r.pendingTmp.empty()) return;
+            auto name = cleanMacroName(r.macroName);
+            if (name.empty()) name = macroFileName();
+            if (cfg().noOverwrite) name = uniqueMacroName(name);
+            std::error_code ec;
+            auto from = macroDir() / (r.pendingTmp + ".xyz"), to = macroDir() / (name + ".xyz");
+            if (from != to) {
+                std::filesystem::remove(to, ec);
+                std::filesystem::rename(from, to, ec);
+            }
+            if (ec) Notification::create("Could not rename the macro", NotificationIcon::Error)->show();
+            if (!ec) { r.pendingTmp.clear(); r.macroName = name; }
+            this->later(false);
+        }}});
         tog("Frame Stepper", c.stepper, [](bool v) { cfg().stepper = v; }, "stepper");
         tog("Noclip", c.noclip, [](bool v) { cfg().noclip = v; saveCfg(); }, "noclip");
         sec("ACCURACY");
         num("Accuracy", [] { return std::string(ACCURACY[std::clamp(cfg().accuracy, 0, 3)]); }, [](int d) { auto& v = cfg().accuracy; v = (v + d + 4) % 4; saveCfg(); });
         opt(std::vector<std::string>{ACCURACY[0], ACCURACY[1], ACCURACY[2], ACCURACY[3]}, [] { return std::clamp(cfg().accuracy, 0, 3); }, [](int v) { cfg().accuracy = v; saveCfg(); });
-        num("Anchor Spacing (ticks)", [] { return fmt::format("{}", cfg().anchorK); }, [](int d) { cfg().anchorK = std::clamp(cfg().anchorK + d * 2, 2, 64); saveCfg(); });
         tog("Ignore Level Check", c.ignoreLevel, [](bool v) { cfg().ignoreLevel = v; saveCfg(); });
         tog("Block Inputs In Playback", c.blockInputs, [](bool v) { cfg().blockInputs = v; saveCfg(); });
         sec("RECORDING");
         num("Record Players", [] { return std::string(PLAYERS[std::clamp(cfg().recPlayers, 0, 2)]); }, [](int d) { auto& v = cfg().recPlayers; v = (v + d + 3) % 3; saveCfg(); });
         opt(std::vector<std::string>{PLAYERS[0], PLAYERS[1], PLAYERS[2]}, [] { return std::clamp(cfg().recPlayers, 0, 2); }, [](int v) { cfg().recPlayers = v; saveCfg(); });
+        tog("Auto Save", c.autoSave, [](bool v) { cfg().autoSave = v; saveCfg(); });
         tog("Auto Name Replay", c.autoName, [](bool v) { cfg().autoName = v; saveCfg(); }, "naming");
         tog("No Overwrite", c.noOverwrite, [](bool v) { cfg().noOverwrite = v; saveCfg(); });
         sec("PLAYBACK");
@@ -1066,6 +1115,8 @@ void XyzMenu::rebuild(bool animate) {
         sec("FIXES");
         tog("Fix Rotation Bug", c.fixRotation, [](bool v) { cfg().fixRotation = v; saveCfg(); });
         tog("Wave Drag Fix", c.waveDragFix, [](bool v) { cfg().waveDragFix = v; saveCfg(); });
+        sec("LOGGING");
+        tog("Logging", c.logging, [](bool v) { cfg().logging = v; saveCfg(); }, "logging");
         sec("LEVEL");
         tog("Layout Mode (reload level)", c.layout, [](bool v) { cfg().layout = v; saveCfg(); }, "layout");
         sec("EFFECTS");
@@ -1096,7 +1147,7 @@ void XyzMenu::rebuild(bool animate) {
                     }
                     auto msg = fmt::format("Imported {}", n);
                     if (bad) msg += fmt::format(", {} failed{}", bad, why.empty() ? "" : " (" + why + ")");
-                    Notification::create(msg, bad ? NotificationIcon::Warning : NotificationIcon::Success)->show();
+                    if (bad) Notification::create(msg, NotificationIcon::Warning)->show();
                     this->later(false); }}});
         pills({{"Search", [this] { XyzTextPopup::open("Search Macros", m_query, [this](std::string q) { m_query = std::move(q); this->later(false); }); }},
                {"Clear Search", [this] { m_query.clear(); this->later(false); }}});
@@ -1132,13 +1183,12 @@ void XyzMenu::rebuild(bool animate) {
                     } else {
                         std::string out;
                         bool ok = mergeMacros(m_mergeBase, n, out);
-                        Notification::create(ok ? "Merged into " + out : std::string("Merge failed (different TPS?)"), ok ? NotificationIcon::Success : NotificationIcon::Error)->show();
+                        if (!ok) Notification::create("Merge failed (different TPS?)", NotificationIcon::Error)->show();
                         m_mergeBase.clear();
                     }
                     this->later(false); }));
                 ps.push_back(makePill("+Seq", false, [this, n] {
-                    cfg().seq.push_back(n); saveCfg();
-                    Notification::create("Added to sequence", NotificationIcon::Success)->show(); }));
+                    cfg().seq.push_back(n); saveCfg(); }));
                 ps.push_back(makePill("Play", true, [this, n] {
                     if (!startPlay(n)) Notification::create("Cannot play macro", NotificationIcon::Error)->show();
                     else this->onClose(nullptr); }));
@@ -1206,12 +1256,17 @@ void XyzMenu::rebuild(bool animate) {
         break;
     case 7: {
         static char const* CODEC_NAMES[] = {"Auto", "libx264", "h264_mediacodec", "libopenh264", "mpeg4"};
+        tog("Auto Height (match screen)", c.renderAutoH, [](bool v) {
+            auto& c = cfg();
+            if (!v && c.renderAutoH) c.renderH = std::clamp(autoRenderHeight(), 320, 3840) & ~1;
+            c.renderAutoH = v;
+            saveCfg();
+        });
         sec("RENDER");
-        txt(isRendering() ? "Rendering... press Stop Render to finish." : renderAvailable() ? "Ready. Open a level, then press Start Render." : "Needs the FFmpeg API mod (eclipse.ffmpeg-api).");
+        txt(isRendering() ? "Rendering... press Stop Render to finish." : renderAvailable() ? "Ready. Open a level, then press Start Render." : "This build has no FFmpeg libraries, rendering is off.");
         pills({{"Start Render", [this] {
                     auto err = startRender();
                     if (!err.empty()) { Notification::create(err, NotificationIcon::Error)->show(); return; }
-                    Notification::create("Render started. Resume the level.", NotificationIcon::Info)->show();
                     this->onClose(nullptr); }},
                {"Stop Render", [this] { renderStop(true); this->later(false); }}});
         sec("SOURCE");
@@ -1225,12 +1280,6 @@ void XyzMenu::rebuild(bool animate) {
             saveCfg(); });
         sec("VIDEO");
         num("Width", [] { return fmt::format("{}", cfg().renderW); }, [](int d) { cfg().renderW = std::clamp(cfg().renderW + d * 160, 320, 3840); saveCfg(); });
-        tog("Auto Height (match screen)", c.renderAutoH, [](bool v) {
-            auto& c = cfg();
-            if (!v && c.renderAutoH) c.renderH = std::clamp(autoRenderHeight(), 320, 3840) & ~1;
-            c.renderAutoH = v;
-            saveCfg();
-        });
         num("Video Height", [] {
             return cfg().renderAutoH
                 ? fmt::format("Auto ({} px)", autoRenderHeight())
@@ -1263,10 +1312,6 @@ void XyzMenu::rebuild(bool animate) {
         num("UI Style", [] { return std::string(cfg().uiStyle ? "Paper" : "Glass"); }, [this](int) {
             cfg().uiStyle = 1 - cfg().uiStyle; saveCfg();
             this->restyle(); });
-        num("Menu Font", [] { return std::string(menuFontNow() == 2 ? "GD Small" : menuFontNow() ? "Italic (new)" : "GD (old)"); }, [this](int) {
-            auto& f = cfg().uiStyle ? cfg().fontPaper : cfg().fontGlass;
-            f = (f + 1) % 3; saveCfg();
-            this->defer([this] { this->applyFont(); }); });
         sec("PRESETS");
         custom([this](CCMenu* menu, float y, float w) {
             int n = (int)(sizeof(PRESETS) / sizeof(PRESETS[0]));
@@ -1377,7 +1422,7 @@ void XyzMenu::rebuild(bool animate) {
             tri->setPosition({14, secH / 2});
             tri->setRotation(rw.on ? -90.f : 0.f);
             node->addChild(tri);
-            auto l = mkLabel(rw.label.c_str());
+            auto l = mkLabelBold(rw.label.c_str());
             sc(l, .36f); l->setAnchorPoint({0, .5f}); l->setPosition({28, secH / 2});
             node->addChild(l);
             auto key = rw.help;
@@ -1501,8 +1546,8 @@ void XyzMenu::rebuild(bool animate) {
             }
             case Row::Text: {
                 auto l = mkLabel(rw.label.c_str());
-                sc(l, .6f); l->setOpacity(190); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
-                l->setWidth((cw - 24.f) / (.6f * kOf(l)));
+                sc(l, .4f); l->setOpacity(190); l->setAnchorPoint({0, .5f}); l->setPosition({12, 0});
+                l->setWidth((cw - 24.f) / (.4f * kOf(l)));
                 rm->addChild(l);
                 break;
             }

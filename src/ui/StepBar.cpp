@@ -45,7 +45,7 @@ public:
             m_lbl[i] = mkLabel(names[i]);
             this->addChild(m_lbl[i], 2);
         }
-        m_title = mkLabel("STEPPER");
+        m_title = mkLabel("FRAME");
         m_title->setAnchorPoint({0.f, 0.5f});
         this->addChild(m_title, 2);
         this->layout();
@@ -117,7 +117,7 @@ public:
         uint32_t t = xyz::rt().tick;
         if (t != m_lastTick) {
             m_lastTick = t;
-            m_title->setString(fmt::format("STEPPER  {}", t).c_str());
+            m_title->setString(fmt::format("FRAME  {}", t).c_str());
             m_title->setScale(0.f); sc(m_title, .26f);
         }
         if (m_drawnHeld != m_held || m_accR != c.accR || m_accG != c.accG || m_accB != c.accB) this->redraw();

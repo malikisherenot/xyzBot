@@ -15,8 +15,7 @@ bool waveOn(PlayerObject* p) { return p && p->m_gameLayer && waveOn(); }
 }
 
 namespace xyz::vis {
-// the wave trail was running ahead of the wave after a fix, no more of that >:( !!
-// (fixes move the player after the game already placed the trail end, so we put it back on the wave <3)
+// playback fixes move the player after the game placed the trail's live end, so it is moved back onto the wave
 void waveSync(PlayerObject* p) {
     if (!waveOn(p) || !p->m_isDart || !p->m_waveTrail) return;
     p->m_waveTrail->m_currentPoint = p->getRealPosition();

@@ -18,56 +18,20 @@ std::deque<std::array<CCRect, 2>> g_trail[2];
 
 ccColor4F col(float r, float g, float b, float a = 1.f) { return {r, g, b, a}; }
 
-// hitboxes are darker and way more solid now, almost full alpha (^o^)b
 constexpr float kFill = 0.5f;
 
-// slopes, rewritten (>_<) now we ask the game where the long edge goes and which side is solid
-// if EVERY slope shows up flipped upside down, just flip this switch (^_^)
-constexpr bool kFloorSlopeIsSolidBelow = true;
-
-// plan B when the game's numbers look weird: work it out from rotation and flips, right angle starts bottom-right
-bool slopeTriGuess(GameObject* o, CCPoint out[3]) {
-    float rot = std::fmod(o->getRotation(), 360.f);
-    if (rot < 0.f) rot += 360.f;
-    int k = (int)std::lround(rot / 90.f);
-    if (std::abs(rot - 90.f * (float)k) > 0.5f) return false; // odd angles stay boxes
-    k %= 4;
-    int sx = 1, sy = -1;
-    if (o->m_isFlipX != (o->getScaleX() < 0.f)) sx = -sx;
-    if (o->m_isFlipY != (o->getScaleY() < 0.f)) sy = -sy;
-    for (int i = 0; i < k; ++i) { int nx = sy, ny = -sx; sx = nx; sy = ny; }
-    auto r = o->getObjectRect();
-    CCPoint c[4] = {{r.getMinX(), r.getMinY()}, {r.getMaxX(), r.getMinY()}, {r.getMaxX(), r.getMaxY()}, {r.getMinX(), r.getMaxY()}};
-    int cs[4][2] = {{-1, -1}, {1, -1}, {1, 1}, {-1, 1}};
-    int n = 0;
-    for (int i = 0; i < 4; ++i) {
-        if (cs[i][0] == -sx && cs[i][1] == -sy) continue; // the corner opposite the right angle is empty
-        out[n++] = c[i];
-    }
-    return n == 3;
-}
-
+// slope triangle from the object rect and the slope direction, like Xenon: the right angle sits in the corner the direction names
 bool slopeTri(GameObject* o, CCPoint out[3]) {
     auto r = o->getObjectRect();
-    float lo = r.getMinY(), hi = r.getMaxY(), x0 = r.getMinX(), x1 = r.getMaxX();
-    float eps = std::max(0.5f, r.size.height * 0.05f);
-    // the long edge: the game says how high the slope is at both ends of its box
-    float yl = (float)o->slopeYPos(x0), yr = (float)o->slopeYPos(x1);
-    bool up;
-    if (std::abs(yl - lo) <= eps && std::abs(yr - hi) <= eps) up = true;        // "/"
-    else if (std::abs(yl - hi) <= eps && std::abs(yr - lo) <= eps) up = false;  // "\"
-    else return slopeTriGuess(o, out);
-    bool below = o->slopeFloorTop() == kFloorSlopeIsSolidBelow; // solid under the long edge, or above it
-    if (up) {
-        out[0].x = x0; out[0].y = lo;
-        out[1].x = x1; out[1].y = hi;
-        if (below) { out[2].x = x1; out[2].y = lo; }
-        else { out[2].x = x0; out[2].y = hi; }
-    } else {
-        out[0].x = x0; out[0].y = hi;
-        out[1].x = x1; out[1].y = lo;
-        if (below) { out[2].x = x0; out[2].y = lo; }
-        else { out[2].x = x1; out[2].y = hi; }
+    CCPoint mx = {r.getMaxX(), r.getMaxY()};
+    out[0] = r.origin;
+    out[1] = CCPoint{r.getMinX(), r.getMaxY()};
+    out[2] = CCPoint{r.getMaxX(), r.getMinY()};
+    switch (o->m_slopeDirection) {
+        case 0: case 7: out[1] = mx; break;
+        case 1: case 5: out[0] = mx; break;
+        case 3: case 6: out[2] = mx; break;
+        default: break;
     }
     return true;
 }
@@ -95,11 +59,30 @@ void drawPlayer(CCDrawNode* n, PlayerObject* p, float w) {
     }
 }
 
+// Noclip Tint: red flash over the screen while noclip is saving you
+void updateTint(GJBaseGameLayer* pl) {
+    auto& r = rt();
+    auto n = static_cast<CCLayerColor*>(pl->getChildByID("xyz-noclip-tint"));
+    if (!cfg().noclip || !cfg().noclipTint) {
+        r.tint = 0.f;
+        if (n) n->setOpacity(0);
+        return;
+    }
+    if (!n) {
+        n = CCLayerColor::create({255, 30, 30, 0});
+        n->setContentSize(CCDirector::get()->getWinSize());
+        n->setID("xyz-noclip-tint");
+        pl->addChild(n, 9999);
+    }
+    n->setOpacity((GLubyte)std::clamp(r.tint * 90.f, 0.f, 255.f));
+    r.tint = std::max(0.f, r.tint - 0.1f);
+}
+
 void drawHitboxes(GJBaseGameLayer* pl) {
     auto& c = cfg();
     g_hb->clear();
     auto ed = typeinfo_cast<LevelEditorLayer*>(pl);
-    bool idle = ed && ed->m_playbackMode != PlaybackMode::Playing; // editor, not playtesting (^_^)
+    bool idle = ed && ed->m_playbackMode != PlaybackMode::Playing;
     auto layer = pl->m_objectLayer;
     float zoom = ed ? layer->getScale() : (float)pl->m_gameState.m_cameraZoom;
     float w = 0.6f / std::max(0.1f, zoom);
@@ -153,8 +136,7 @@ void drawHitboxes(GJBaseGameLayer* pl) {
 }
 
 void copyState(PlayerObject* f, PlayerObject* p) {
-    // only touch a mode when it really changed, poking all of them every frame was breaking the fake after portals (;-;)
-    // modes that turn off go first, then the one that turns on, so they never fight each other
+    // only modes that changed are toggled, turning off first so they never fight each other
     if (f->m_isShip && !p->m_isShip) f->toggleFlyMode(false, true);
     if (f->m_isBird && !p->m_isBird) f->toggleBirdMode(false, true);
     if (f->m_isBall && !p->m_isBall) f->toggleRollMode(false, true);
@@ -169,7 +151,6 @@ void copyState(PlayerObject* f, PlayerObject* p) {
     if (!f->m_isRobot && p->m_isRobot) f->toggleRobotMode(true, true);
     if (!f->m_isSpider && p->m_isSpider) f->toggleSpiderMode(true, true);
     if (!f->m_isSwing && p->m_isSwing) f->toggleSwingMode(true, true);
-    // mini mode! the fake was always staying normal size, now it follows the real player (>w<)
     bool mini = p->m_vehicleSize < 0.99f;
     if ((f->m_vehicleSize < 0.99f) != mini) f->togglePlayerScale(mini, true);
     f->m_isSecondPlayer = p->m_isSecondPlayer;
@@ -293,6 +274,7 @@ void detach() {
 void trailClear() { g_trail[0].clear(); g_trail[1].clear(); }
 
 void refreshEditor(GJBaseGameLayer* pl) {
+    updateTint(pl);
     if (!g_hb) return;
     g_hb->setVisible(cfg().hitboxes);
     if (cfg().hitboxes) drawHitboxes(pl); else g_hb->clear();
@@ -379,6 +361,7 @@ void refresh(GJBaseGameLayer* pl) {
     auto& c = cfg();
     rotPresent(pl);
     updateLabels(pl);
+    updateTint(pl);
     if (!g_hb || !g_tr) return;
     g_hb->setVisible(c.hitboxes);
     g_tr->setVisible(c.traj);

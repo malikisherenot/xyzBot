@@ -43,6 +43,7 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
         bool mine = pl && (GJBaseGameLayer*)pl == this && !r.simulating;
         if (!mine) { GJBaseGameLayer::update(dt); return; }
         vis::rotRestore(pl);
+        r.frameT = std::chrono::steady_clock::now();
         xyz::ProfFrame pf;
 
         double tps = curTps();
@@ -72,7 +73,19 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
             if (r.stepPending <= 0) return;
             int n = std::min(r.stepPending, 600);
             r.stepPending -= n;
+            bool pd = pdActive(pl);
+            if (!pd) r.frozen = false;
             for (int i = 0; i < n; ++i) {
+                if (pd) {
+                    computeWant();
+                    if (r.frozen && r.want != r.frozenWant) r.frozen = false;
+                    if (r.frozen) { r.stepPending = 0; break; }
+                    if (vis::predictDeath(pl, std::clamp(c.pdLook, 1, 10))) {
+                        r.frozen = true; r.frozenWant = r.want;
+                        r.stepPending = 0;
+                        break;
+                    }
+                }
                 r.subTick = i + 1 < n;
                 xyz::backstepSave(pl, n);
                 XYZ_TIMED(P_UPD, GJBaseGameLayer::update((float)(1.0 / curTps())));

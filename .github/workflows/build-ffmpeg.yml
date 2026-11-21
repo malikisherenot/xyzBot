@@ -1,0 +1,95 @@
+name: Build FFmpeg
+
+# Builds the minimal static FFmpeg libraries xyzBot renders with (see ffmpeg/build-ffmpeg.sh).
+# Run it from the Actions tab, then download the "ffmpeg-libs" artifact and unzip it into the project root.
+on:
+  workflow_dispatch:
+    inputs:
+      ffmpeg_tag:
+        description: FFmpeg git tag to build
+        default: n7.1
+      mediacodec:
+        description: Android hardware H.264 encoder (then configure the mod with -DXYZ_MEDIACODEC=ON)
+        type: boolean
+        default: false
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get FFmpeg
+        run: git clone --depth 1 --branch "${{ inputs.ffmpeg_tag }}" https://github.com/FFmpeg/FFmpeg.git ffsrc
+      - name: Build
+        working-directory: ffsrc
+        env:
+          ABI: ${{ matrix.abi }}
+          MEDIACODEC: ${{ inputs.mediacodec && '1' || '' }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y nasm
+          cp ../ffmpeg/build-ffmpeg.sh .
+          export NDK="$ANDROID_NDK_LATEST_HOME"
+          bash build-ffmpeg.sh android
+      - name: Package
+        run: |
+          mkdir -p out/ffmpeg/android-${{ matrix.abi }}
+          cp -r ffsrc/install/include ffsrc/install/lib out/ffmpeg/android-${{ matrix.abi }}/
+          rm -rf out/ffmpeg/android-${{ matrix.abi }}/lib/pkgconfig
+          echo "Library sizes:"; ls -l out/ffmpeg/android-${{ matrix.abi }}/lib; du -sh out/ffmpeg/android-${{ matrix.abi }}/lib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-android-${{ matrix.abi }}
+          path: out
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MSYS
+          update: true
+          path-type: inherit
+          install: make diffutils nasm pkgconf git
+      - name: Get FFmpeg
+        shell: msys2 {0}
+        run: git clone --depth 1 --branch "${{ inputs.ffmpeg_tag }}" https://github.com/FFmpeg/FFmpeg.git ffsrc
+      - name: Build
+        shell: msys2 {0}
+        run: |
+          mv /usr/bin/link.exe /usr/bin/link.exe.bak || true
+          cp ffmpeg/build-ffmpeg.sh ffsrc/
+          cd ffsrc
+          bash build-ffmpeg.sh windows
+      - name: Package
+        shell: msys2 {0}
+        run: |
+          mkdir -p out/ffmpeg/windows-x64
+          cp -r ffsrc/install/include ffsrc/install/lib out/ffmpeg/windows-x64/
+          rm -rf out/ffmpeg/windows-x64/lib/pkgconfig
+          echo "Library sizes:"; ls -l out/ffmpeg/windows-x64/lib; du -sh out/ffmpeg/windows-x64/lib
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-windows-x64
+          path: out
+
+  package:
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ffmpeg-*
+          merge-multiple: true
+          path: libs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-libs
+          path: libs

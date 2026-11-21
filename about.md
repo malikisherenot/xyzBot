@@ -2,12 +2,13 @@
 
 An advanced macro bot for Geometry Dash.
 
-- Record and replay with four accuracy modes: Vanilla, Input Fixes, Frame Fixes and Anchor Fixes
+- Record and replay with three accuracy modes: Vanilla, Input Fixes and Frame Fixes
 - TPS bypass, speedhack, frame stepper and noclip
 - Import macros from xdBot, Silicate, TCBot, Echo, Omega and plain text formats
 - Hitboxes, hitbox trail, trajectory preview and Wave Drag Fix
 - 21 on-screen labels and a layout mode
-- Video rendering (Android, requires the FFmpeg API mod)
+- Input and position logging
+- Video rendering (bulit-in)
 - Two menu styles: Glass and Paper (experimental)
 
 **This is a cheat mod.** Do not use it to submit runs to leaderboards or lists that forbid bots.

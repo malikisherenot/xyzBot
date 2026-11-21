@@ -5,52 +5,58 @@
 #include <algorithm>
 
 namespace xyz::draw {
-constexpr int PAPER_TAG = 0x5A7, CHAT_TAG = 0x5A8;
-inline bool& fontBad() { static bool b = false; return b; }
+constexpr int PAPER_TAG = 0x5A7; // label in the regular font (roboto-regular in mod.json)
+constexpr int BOLD_TAG = 0x5A8;  // label in the heavy font (roboto-semibold in mod.json): titles, tabs, section headers
+
+// A missing .fnt makes cocos corrupt the heap and crash the game, so the file is checked before it is used.
+inline bool fontExists(std::string const& f) {
+    auto fu = cocos2d::CCFileUtils::sharedFileUtils();
+    std::string p = fu->fullPathForFilename(f.c_str(), false);
+    return !p.empty() && fu->isFileExist(p.c_str());
+}
 inline std::string const& fontFile() {
-    static std::string f = [] { using namespace geode::prelude; return std::string("paper-italic.fnt"_spr); }();
+    static std::string f = [] { using namespace geode::prelude; return std::string("roboto-regular.fnt"_spr); }();
     return f;
 }
-inline std::string fontOf(int style) {
-    if (style == 2) return "chatFont.fnt";
-    return (style != 1 || fontBad()) ? std::string("bigFont.fnt") : fontFile();
+inline std::string const& fontBoldFile() {
+    static std::string f = [] { using namespace geode::prelude; return std::string("roboto-semibold.fnt"_spr); }();
+    return f;
 }
-inline cocos2d::CCLabelBMFont* mkLabelStyle(char const* text, int style) {
-    if (style == 2) {
-        if (auto l = cocos2d::CCLabelBMFont::create(text, "chatFont.fnt")) { l->setTag(CHAT_TAG); return l; }
-    } else if (style != 0 && !fontBad()) {
+inline bool fontsBad() { static bool bad = !fontExists(fontFile()); return bad; }      // no mod font at all: game font
+inline bool boldBad() { static bool bad = !fontExists(fontBoldFile()); return bad; }  // no heavy font: regular one
+inline std::string fontOf(int = 0) { return fontsBad() ? std::string("bigFont.fnt") : fontFile(); }
+
+inline cocos2d::CCLabelBMFont* mkLabelStyle(char const* text, int = 0) {
+    if (!fontsBad()) {
         if (auto l = cocos2d::CCLabelBMFont::create(text, fontFile().c_str())) { l->setTag(PAPER_TAG); return l; }
-        fontBad() = true;
     }
     return cocos2d::CCLabelBMFont::create(text, "bigFont.fnt");
 }
-inline cocos2d::CCLabelBMFont* mkLabel(char const* text) { return mkLabelStyle(text, xyz::menuFontNow()); }
-
-inline float fontK() {
-    static float k = 0.f;
-    if (k > 0.f) return k;
-    if (fontBad()) return 1.f;
-    auto a = cocos2d::CCLabelBMFont::create("Ag", fontFile().c_str());
-    auto b = cocos2d::CCLabelBMFont::create("Ag", "bigFont.fnt");
-    if (!a || !b) { if (!a) fontBad() = true; return 1.f; }
-    float ha = a->getContentSize().height, hb = b->getContentSize().height;
-    k = (ha > 0.f && hb > 0.f) ? std::clamp(hb / ha * 1.25f, 0.5f, 8.f) : 1.f;
-    return k;
+inline cocos2d::CCLabelBMFont* mkLabel(char const* text) { return mkLabelStyle(text); }
+inline cocos2d::CCLabelBMFont* mkLabelBold(char const* text) {
+    if (!fontsBad() && !boldBad()) {
+        if (auto l = cocos2d::CCLabelBMFont::create(text, fontBoldFile().c_str())) { l->setTag(BOLD_TAG); return l; }
+    }
+    return mkLabelStyle(text);
 }
-inline float fontKChat() {
-    static float k = 0.f;
-    if (k > 0.f) return k;
-    auto a = cocos2d::CCLabelBMFont::create("Ag", "chatFont.fnt");
+
+// Size of each font relative to the game's GD Big font, on top of the measured line-height ratio (so the size in
+// mod.json does not matter). These are the numbers to change if one font looks too big or too small.
+constexpr float kFontSize = 1.05f;
+constexpr float kBoldSize = 1.2f;
+inline float ratio(std::string const& file, float mul) {
+    auto a = cocos2d::CCLabelBMFont::create("Ag", file.c_str());
     auto b = cocos2d::CCLabelBMFont::create("Ag", "bigFont.fnt");
     if (!a || !b) return 1.f;
     float ha = a->getContentSize().height, hb = b->getContentSize().height;
-    k = (ha > 0.f && hb > 0.f) ? std::clamp(hb / ha * 0.8f, 0.3f, 8.f) : 1.f;
-    return k;
+    return (ha > 0.f && hb > 0.f) ? std::clamp(hb / ha * mul, 0.3f, 8.f) : 1.f;
 }
+inline float fontK() { static float k = fontsBad() ? 1.f : ratio(fontFile(), kFontSize); return k; }
+inline float boldK() { static float k = (fontsBad() || boldBad()) ? 1.f : ratio(fontBoldFile(), kBoldSize); return k; }
 inline float kOf(cocos2d::CCLabelBMFont* l) {
     if (!l) return 1.f;
     if (l->getTag() == PAPER_TAG) return fontK();
-    if (l->getTag() == CHAT_TAG) return fontKChat();
+    if (l->getTag() == BOLD_TAG) return boldK();
     return 1.f;
 }
 inline void sc(cocos2d::CCLabelBMFont* l, float s) { l->setScale(s * kOf(l)); }
@@ -59,10 +65,20 @@ inline void fit(cocos2d::CCLabelBMFont* l, float width, float def, float minS) {
     if (cw > 0.f && cw * def * k > width) s = std::max(minS, width / (cw * k));
     l->setScale(s * k);
 }
-inline void setStyle(cocos2d::CCLabelBMFont* l, int style) {
-    bool paper = style == 1 && !fontBad();
-    l->setFntFile(fontOf(style).c_str());
-    l->setTag(style == 2 ? CHAT_TAG : (paper ? PAPER_TAG : 0));
+inline void setStyle(cocos2d::CCLabelBMFont* l, int = 0) {
+    l->setFntFile(fontOf().c_str());
+    l->setTag(fontsBad() ? 0 : PAPER_TAG);
+}
+// a game button (ButtonSprite) whose text is switched to the mod's font and kept inside the button
+inline ButtonSprite* restyleButton(ButtonSprite* b) {
+    if (!b || !b->m_label) return b;
+    auto l = b->m_label;
+    float old = l->getScale();
+    setStyle(l);
+    l->setScale(old * kOf(l));
+    float maxW = b->getContentSize().width - 16.f, cw = l->getContentSize().width * l->getScale();
+    if (cw > maxW && cw > 0.f) l->setScale(l->getScale() * maxW / cw);
+    return b;
 }
 
 inline cocos2d::ccColor4F pm(cocos2d::ccColor4F c) { return {c.r * c.a, c.g * c.a, c.b * c.a, c.a}; }

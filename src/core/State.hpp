@@ -10,15 +10,13 @@
 namespace xyz {
 enum class Mode : uint8_t { Off, Record, Play };
 
-struct Input { uint32_t tick; uint8_t button; bool down; bool p2; };
+// sub = offset from the tick in 1/16 ticks (-8..7), only set by Delta Accuracy recordings
+struct Input { uint32_t tick; uint8_t button; bool down; bool p2; int8_t sub = 0; };
+struct PendIn { uint32_t due; int8_t sub; uint8_t button; bool down, p1; }; // Delta Accuracy: input waiting for its tick
 struct Fix { uint32_t tick; bool p2; float x, y, rot, yv; };
 struct TpsChange { uint32_t tick; uint32_t tps; }; // from this tick on, the macro runs at this TPS
-// Anchor Fixes store x, y, rotation and y-velocity on a fixed grid (units per step, in that order).
+// Old anchor macros (.xyz v4/v5) store x, y, rotation and y-velocity on a fixed grid (units per step, in that order).
 inline constexpr double ANCHOR_SCALE[4] = {1024.0, 1024.0, 256.0, 4096.0};
-inline float anchorSnap(float v, int c) {
-    if (std::isnan(v)) return v;
-    return (float)((double)std::llround((double)v * ANCHOR_SCALE[c]) / ANCHOR_SCALE[c]);
-}
 struct Macro {
     std::vector<Input> inputs;
     std::vector<Fix> fixes;
@@ -28,7 +26,8 @@ struct Macro {
     int64_t levelId = 0;
     float startX = 0.f;
     std::vector<TpsChange> tpsChanges; // sorted by tick, never at tick 0
-    uint32_t anchor = 0; // spacing of Anchor Fixes in ticks, 0 = not an anchor macro
+    bool delta = false; // recorded with Delta Accuracy (inputs only, sub-tick timing)
+    uint32_t anchor = 0; // spacing in ticks of old anchor macros, 0 = not an anchor macro
 };
 
 struct Cfg {
@@ -39,14 +38,16 @@ struct Cfg {
     float speedVal = 1.f;
     bool stepper = false;
     bool noclip = false;
+    bool noclipTint = false;
     int accuracy = 2;
     bool lockDelta = false; // always use the fixed-step loop, even at 240 TPS
-    int anchorK = 16;
     bool fastSub = true, skipVis = false;
     bool ignoreLevel = false;
     bool hitboxes = false;
     bool hbPlayer = true, hbSolid = true, hbHazard = true, hbSpecial = true, hbRotated = true;
     bool trail = false;
+    bool logging = false, logPositions = false;
+    int logPosEvery = 1;
     bool trailClear = true;
     int trailLen = 200;
     bool traj = false;
@@ -76,6 +77,7 @@ struct Cfg {
     bool renderAutoH = true, renderAudio = true;
     std::string renderMacro;
     bool autoName = true, noOverwrite = false;
+    bool autoSave = false; // off = ask for a name when a recording ends
     int renameFmt = 0;
     int recPlayers = 0, playPlayers = 0;
     bool swapInput = false, inverse[2] = {false, false};
@@ -137,6 +139,11 @@ struct Rt {
     int stepPending = 0, backReq = 0;
     bool bsReplay = false, bsLoad = false, bsSaving = false;
     double leftover = 0.0;
+    float tint = 0.f; // Noclip Tint strength, fades out
+    std::chrono::steady_clock::time_point frameT{};
+    std::vector<PendIn> pend;
+    bool flushing = false;
+    int8_t flushSub = 0;
     bool savedTps = false;
     float prevTpsVal = 240.f;
     int64_t levelId = 0;
@@ -148,6 +155,7 @@ struct Rt {
     int maxCps[2] = {0, 0};
     float startX = 0.f;
     std::string levelName;
+    std::string macroName, pendingTmp; // name typed in the menu, temp file of a finished recording that is not saved yet
     bool edWasDead = false;
     float edLastX = 0.f;
     bool seekPending = false;

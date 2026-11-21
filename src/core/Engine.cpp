@@ -4,6 +4,7 @@
 #include "State.hpp"
 #include <cmath>
 #include "../vis/Vis.hpp"
+#include "Logger.hpp"
 #include <Geode/modify/GJBaseGameLayer.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/modify/LevelEditorLayer.hpp>
@@ -172,18 +173,6 @@ static bool alignPlayback() {
         return false;
     }
     uint32_t t = m.fixes[idx].tick + 1;
-    if (m.anchor > 0) {
-        // I love anchors
-        for (size_t i = idx; i-- > 0;) {
-            if (m.fixes[i].p2) continue;
-            auto& a = m.fixes[i]; auto& b = m.fixes[idx];
-            if (b.x > a.x && b.tick > a.tick + 1) {
-                float fr = std::clamp((cur - a.x) / (b.x - a.x), 0.f, 1.f);
-                t = a.tick + (uint32_t)std::lround(fr * (float)(b.tick - a.tick)) + 1;
-            }
-            break;
-        }
-    }
     r.tick = t;
     r.nextIn = 0; r.nextFix = 0;
     r.seekHeld.fill(false);
@@ -225,8 +214,11 @@ static void rewind() {
     auto gl = activeLayer();
     r.startX = (gl && gl->m_player1) ? gl->m_player1->getPositionX() : 0.f;
     r.edWasDead = false; r.edLastX = r.startX;
+    logger::event(fmt::format("attempt mode={} seed={} tps={} startX={:.9g}", r.mode == Mode::Record ? "record" : r.mode == Mode::Play ? "play" : "off", GameToolbox::getfast_srand(), curTps(), r.startX));
     if (r.mode == Mode::Record) {
         r.rec = Macro{};
+        r.pend.clear();
+        r.rec.delta = cfg().accuracy == 3;
         r.rec.tps = (uint32_t)curTps();
         r.rec.levelId = r.levelId;
         r.rec.startX = r.startX;
@@ -245,7 +237,6 @@ static void applyFix(GJBaseGameLayer* pl, Fix const& f) {
     p->setPosition({f.x, f.y});
     if (!std::isnan(f.rot)) p->setRotation(f.rot);
     if (!std::isnan(f.yv)) p->m_yVelocity = f.yv;
-    // glue the wave trail back to the wave, it looks so much better now (^o^)/
     vis::waveSync(p);
 }
 
@@ -273,23 +264,9 @@ static void feed(GJBaseGameLayer* gl) {
 
 static void pushFixes(GJBaseGameLayer* pl, uint32_t tick) {
     auto& r = rt();
-    bool anchor = cfg().accuracy == 3;
-    auto have = [&](bool p2) {
-        size_t n = 0;
-        for (size_t i = r.rec.fixes.size(); i-- > 0 && n < 2; ++n) {
-            if (r.rec.fixes[i].tick < tick) break;
-            if (r.rec.fixes[i].tick == tick && r.rec.fixes[i].p2 == p2) return true;
-        }
-        return false;
-    };
     auto add = [&](PlayerObject* p, bool p2) {
         if (!p) return;
         Fix f{tick, p2, p->getPositionX(), p->getPositionY(), p->getRotation(), (float)p->m_yVelocity};
-        if (anchor) {
-            if (have(p2)) return;
-            f.x = anchorSnap(f.x, 0); f.y = anchorSnap(f.y, 1); f.rot = anchorSnap(f.rot, 2); f.yv = anchorSnap(f.yv, 3);
-            r.rec.anchor = (uint32_t)std::clamp(cfg().anchorK, 2, 64);
-        }
         r.rec.fixes.push_back(f);
     };
     if (covers(cfg().recPlayers, false)) add(pl->m_player1, false);
@@ -298,6 +275,7 @@ static void pushFixes(GJBaseGameLayer* pl, uint32_t tick) {
 
 static void closeTick(GJBaseGameLayer* pl) {
     auto& r = rt();
+    logger::position(r.tick);
     if (cfg().profiler) r.prof.ticks++;
     if (r.mode == Mode::Play) {
         bool useFix = cfg().accuracy > 0;
@@ -320,7 +298,6 @@ static void closeTick(GJBaseGameLayer* pl) {
         }
     } else if (r.mode == Mode::Record) {
         if (cfg().accuracy == 2) pushFixes(pl, r.tick);
-        else if (cfg().accuracy == 3 && r.tick % (uint32_t)std::clamp(cfg().anchorK, 2, 64) == 0) pushFixes(pl, r.tick);
         r.tick++;
         r.rec.ticks = r.tick;
     } else {
@@ -333,6 +310,24 @@ static void closeTick(GJBaseGameLayer* pl) {
         r.ssbActive = act; r.ssbLast = f;
     }
     if (cfg().trail) vis::sampleTrail(pl);
+}
+
+// Delta Accuracy recording: applies the inputs whose tick has come, in the order they were pressed
+static void flushPend(GJBaseGameLayer* gl) {
+    auto& r = rt();
+    if (r.pend.empty()) return;
+    if (r.mode != Mode::Record) { r.pend.clear(); return; }
+    size_t n = 0;
+    while (n < r.pend.size() && r.pend[n].due <= r.tick) ++n;
+    if (n == 0) return;
+    std::vector<PendIn> due(r.pend.begin(), r.pend.begin() + (std::ptrdiff_t)n);
+    r.pend.erase(r.pend.begin(), r.pend.begin() + (std::ptrdiff_t)n);
+    r.flushing = true;
+    for (auto& i : due) {
+        r.flushSub = i.due == r.tick ? i.sub : (int8_t)0;
+        gl->handleButton(i.down, i.button, i.p1);
+    }
+    r.flushing = false; r.flushSub = 0;
 }
 
 static void editorRespawnCheck(GJBaseGameLayer* gl) {
@@ -351,9 +346,19 @@ class $modify(XyzGL, GJBaseGameLayer) {
         auto& r = rt(); auto& c = cfg();
         if (!isActive(this) || r.simulating) { GJBaseGameLayer::handleButton(down, button, p1); return; }
         bool ext = !r.internal && !r.feeding && !r.resetting;
+        if (ext && !r.flushing && r.mode == Mode::Record && c.accuracy == 3 && button >= 1 && button <= 3) {
+            // Delta Accuracy: keep the real time of the input and apply it at the tick nearest to it
+            double st = 1.0 / curTps();
+            double since = std::min(0.25, std::chrono::duration<double>(std::chrono::steady_clock::now() - r.frameT).count());
+            int64_t q = std::clamp<int64_t>((int64_t)std::llround((r.leftover + since) / st * 16.0), 0, 16 * 600);
+            int64_t k = (q + 8) >> 4;
+            r.pend.push_back({r.tick + (uint32_t)k, (int8_t)(q - k * 16), (uint8_t)button, down, p1});
+            return;
+        }
         if (ext && c.stepper && !r.bsReplay) backstepLog(r.tick, button, down, p1);
         if (ext && c.swapInput) p1 = !p1;
         bool p2 = !p1;
+        logger::input(r.tick, button, down, p2, r.feeding ? "macro" : r.resetting ? "reset" : r.internal ? "bot" : "user");
         if (r.mode == Mode::Play && !r.feeding && !r.resetting && c.blockInputs && covers(c.playPlayers, p2)) return;
         if (ext && button == 1 && !down && c.autoSwift && r.mode != Mode::Play && !takeover()) return;
         if (ext && button == 1) {
@@ -362,9 +367,9 @@ class $modify(XyzGL, GJBaseGameLayer) {
             if (takeover() && r.mode != Mode::Play) return;
         }
         if (r.mode == Mode::Record && !r.resetting && button >= 1 && button <= 3 && covers(c.recPlayers, p2)) {
-            if ((c.accuracy == 1 || c.accuracy == 3) && r.tick > 0 && (r.rec.fixes.empty() || r.rec.fixes.back().tick < r.tick - 1)) pushFixes(this, r.tick - 1);
+            if (c.accuracy == 1 && r.tick > 0 && (r.rec.fixes.empty() || r.rec.fixes.back().tick < r.tick - 1)) pushFixes(this, r.tick - 1);
             r.held[hi(button, p2)] = down;
-            r.rec.inputs.push_back({r.tick, (uint8_t)button, down, p2});
+            r.rec.inputs.push_back({r.tick, (uint8_t)button, down, p2, r.flushing ? r.flushSub : (int8_t)0});
         }
         bool helper = ext && button == 1 && down && r.mode != Mode::Play;
         if (helper && wantsPreRelease(p1 ? m_player1 : m_player2)) press(this, false, p2);
@@ -383,6 +388,7 @@ class $modify(XyzGL, GJBaseGameLayer) {
         if (!half) {
             if (!PlayLayer::get()) editorRespawnCheck(this);
             if (rt().mode != Mode::Play) assistTick(this);
+            flushPend(this);
             drive(this); feed(this);
         }
         XYZ_TIMED(P_PROC, GJBaseGameLayer::processCommands(dt, half, last));
@@ -398,6 +404,7 @@ class $modify(XyzPL, PlayLayer) {
         if (!PlayLayer::init(level, a, b)) return false;
         rt().levelId = level->m_levelID.value();
         rt().levelName = std::string(level->m_levelName);
+        logger::event(fmt::format("level {} \"{}\"", rt().levelId, rt().levelName));
         return true;
     }
 
@@ -411,7 +418,7 @@ class $modify(XyzPL, PlayLayer) {
         r.resetting = true; r.loadedCp = false;
         PlayLayer::resetLevel();
         r.resetting = false;
-        if (cfg().trailClear) vis::trailClear(); // the old trail was staying after death, not anymore!!
+        if (cfg().trailClear) vis::trailClear();
         if (!r.loadedCp) rewind();
         if (!r.bsLoad) flipOnReset();
     }
@@ -478,10 +485,11 @@ class $modify(XyzPL, PlayLayer) {
             r.simDead = true;
             return;
         }
-        if (p && !p->m_isDead && o != m_anticheatSpike && noclipFor(p, this)) return;
+        if (p && !p->m_isDead && o != m_anticheatSpike && noclipFor(p, this)) { r.tint = 1.f; return; }
         PlayLayer::destroyPlayer(p, o);
+        if (p) logger::event(fmt::format("death t={} p{} x={:.9g} y={:.9g}", r.tick, p->m_isSecondPlayer ? 2 : 1, p->getPositionX(), p->getPositionY()));
         if (p) r.flipPlayer = p->m_isSecondPlayer ? 2 : 1;
-        if (r.mode == Mode::Play && p && p->m_isDead && !m_isPracticeMode) stopAll(false);
+        if (r.mode == Mode::Play && p && p->m_isDead && !m_isPracticeMode && isRendering()) stopAll(false); // only renders end on death, playback restarts with the attempt
     }
 
     void levelComplete() {
@@ -510,11 +518,10 @@ class $modify(XyzEditorLayer, LevelEditorLayer) {
     void destroyPlayer(PlayerObject* p, GameObject* o) {
         auto& r = rt();
         if (r.simulating) { r.simDead = true; return; }
-        if (p && noclipFor(p, this)) return;
+        if (p && noclipFor(p, this)) { r.tint = 1.f; return; }
         LevelEditorLayer::destroyPlayer(p, o);
     }
 
-    // the editor only ticked the hitboxes while playtesting, now they show up while you build too (^o^)/
     void update(float dt) {
         LevelEditorLayer::update(dt);
         if (m_playbackMode != PlaybackMode::Playing) vis::refreshEditor(this);
@@ -555,6 +562,7 @@ bool startRecord() {
     auto& r = rt();
     if (auto pl = PlayLayer::get()) {
         r.mode = Mode::Record;
+        logger::event("record");
         pl->resetLevelFromStart();
         return true;
     }
@@ -577,6 +585,7 @@ bool startPlay(std::string const& name) {
     cfg().tps = true; cfg().tpsVal = (float)r.play.tps;
     r.tpsOverridden = true;
     r.mode = Mode::Play;
+    logger::event(fmt::format("play \"{}\" ticks={} tps={} inputs={} fixes={} seed={}", name, r.play.ticks, r.play.tps, r.play.inputs.size(), r.play.fixes.size(), r.play.seed));
     if (pl) pl->resetLevelFromStart();
     else Notification::create(activeLayer() ? "Restart the playtest to begin playback" : "Playback armed: start the playtest", NotificationIcon::Info)->show();
     return true;
@@ -585,13 +594,21 @@ bool startPlay(std::string const& name) {
 void stopAll(bool save) {
     auto& r = rt();
     if (r.mode == Mode::Off) return;
+    logger::event(fmt::format("stop mode={} tick={} save={}", r.mode == Mode::Record ? "record" : "play", r.tick, save));
     if (r.mode == Mode::Play && isRendering()) renderNotifyEnd();
     if (r.mode == Mode::Record && save && !r.rec.inputs.empty()) {
         auto name = macroFileName();
-        if (cfg().noOverwrite) name = uniqueMacroName(name);
-        saveMacro(r.rec, name);
-        Notification::create("Macro saved", NotificationIcon::Success)->show();
+        if (cfg().autoSave) {
+            if (cfg().noOverwrite) name = uniqueMacroName(name);
+            saveMacro(r.rec, name);
+        } else {
+            // kept as a temp file until Save is pressed in the menu (name it there)
+            auto tmp = name + " (unsaved)";
+            saveMacro(r.rec, tmp);
+            r.pendingTmp = tmp; r.macroName = name;
+        }
     }
+    r.pend.clear();
     if (r.tpsOverridden) { cfg().tps = r.savedTps; cfg().tpsVal = r.prevTpsVal; r.tpsOverridden = false; }
     r.mode = Mode::Off;
     r.held.fill(false);

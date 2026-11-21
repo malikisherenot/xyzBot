@@ -1,4 +1,4 @@
-// Video rendering; frames are handed to eclipse.ffmpeg-api the way Echo (GPL-3.0) does it.
+// Video rendering; frames go to the mod's own libav encoder (Encoder.cpp), no other mod needed.
 #include "../core/State.hpp"
 #include "../vis/Vis.hpp"
 #include <chrono>
@@ -14,8 +14,8 @@
 #include <mutex>
 #include <thread>
 
-#if XYZ_FFMPEG_API && __has_include(<eclipse.ffmpeg-api/include/events.hpp>)
-#include <eclipse.ffmpeg-api/include/events.hpp>
+#if XYZ_LIBAV
+#include "Encoder.hpp"
 #define XYZ_FFMPEG 1
 #endif
 
@@ -32,7 +32,7 @@ int g_w = 0, g_h = 0, g_fps = 60;
 fs::path g_out, g_song;
 Ref<CCRenderTexture> g_rt;
 #ifdef XYZ_FFMPEG
-std::unique_ptr<ffmpeg::events::Recorder> g_enc;
+std::unique_ptr<xyz::enc::Recorder> g_enc;
 
 constexpr size_t MAX_QUEUED = 4, MAX_SPARE = 2;
 constexpr int RING = 4;
@@ -89,9 +89,9 @@ void encodeLoop(Pipe* p) {
         p->cv.notify_all();
         if (!p->broken) {
             auto res = g_enc->writeFrame(f);
-            if (res.isErr()) {
+            if (!res.empty()) {
                 std::lock_guard g(p->mx);
-                p->failure = res.unwrapErr();
+                p->failure = res;
                 p->broken = true;
                 p->cv.notify_all();
             }
@@ -218,7 +218,7 @@ void setMusicVolume(float v) {
 namespace xyz {
 bool renderAvailable() {
 #ifdef XYZ_FFMPEG
-    return Loader::get()->isModLoaded("eclipse.ffmpeg-api");
+    return true;
 #else
     return false;
 #endif
@@ -237,10 +237,9 @@ RenderStats renderStats() {
 
 std::string startRender() {
 #ifndef XYZ_FFMPEG
-    return "This build has no FFmpeg API support";
+    return "This build has no FFmpeg libraries (see ffmpeg/README in the project)";
 #else
     if (g_on) return "Already rendering";
-    if (!renderAvailable()) return "Install the FFmpeg API mod (eclipse.ffmpeg-api)";
     auto pl = PlayLayer::get();
     if (!pl) return "Open a level first";
     auto& c = cfg();
@@ -258,7 +257,7 @@ std::string startRender() {
     for (int n = 1; fs::exists(g_out, existsEc) && n < 1000; ++n) g_out = renderDir() / (name + " (" + std::to_string(n) + ").mp4");
 
     static char const* CODECS[] = {"", "libx264", "h264_mediacodec", "libopenh264", "mpeg4"};
-    auto available = ffmpeg::events::Recorder::getAvailableCodecs();
+    auto available = xyz::enc::availableCodecs();
     auto offered = [&](std::string const& n) { return available.empty() || std::find(available.begin(), available.end(), n) != available.end(); };
     std::vector<std::string> order;
     auto want = [&](std::string n) { if (std::find(order.begin(), order.end(), n) == order.end()) order.push_back(std::move(n)); };
@@ -272,23 +271,21 @@ std::string startRender() {
     g_enc.reset();
     for (auto& codec : order) {
         if (!offered(codec)) continue;
-        ffmpeg::RenderSettings s;
-        s.m_pixelFormat = ffmpeg::PixelFormat::RGBA;
-        s.m_codec = codec;
-        s.m_bitrate = (long long)std::clamp(c.renderBitrate, 1, 200) * 1'000'000;
-        s.m_width = (unsigned)g_w; s.m_height = (unsigned)g_h;
-        s.m_fps = (unsigned short)g_fps;
-        s.m_outputFile = g_out;
-        s.m_doVerticalFlip = true;
-        auto enc = std::make_unique<ffmpeg::events::Recorder>();
+        xyz::enc::Settings s;
+        s.codec = codec;
+        s.bitrate = (long long)std::clamp(c.renderBitrate, 1, 200) * 1'000'000;
+        s.width = g_w; s.height = g_h;
+        s.fps = g_fps;
+        s.out = g_out;
+        auto enc = std::make_unique<xyz::enc::Recorder>();
         auto res = enc->init(s);
-        if (res.isOk()) { g_enc = std::move(enc); break; }
-        error = res.unwrapErr();
+        if (res.empty()) { g_enc = std::move(enc); break; }
+        error = res;
     }
     if (!g_enc) return error;
 
     g_rt = CCRenderTexture::create(g_w, g_h);
-    if (!g_rt) { g_enc->stop(); g_enc.reset(); return "Could not create the render texture"; }
+    if (!g_rt) { (void)g_enc->stop(); g_enc.reset(); return "Could not create the render texture"; }
     startPipe();
 #ifdef GEODE_IS_WINDOWS
     openRing();
@@ -330,7 +327,7 @@ void renderStop(bool mixAudio) {
     std::string failure;
     if (g_pipe) { std::lock_guard g(g_pipe->mx); failure = g_pipe->failure; }
     stopPipe();
-    if (g_enc) { g_enc->stop(); g_enc.reset(); }
+    if (g_enc) { auto stopErr = g_enc->stop(); if (failure.empty()) failure = stopErr; g_enc.reset(); }
     g_rt = nullptr;
     if (!failure.empty()) {
         Notification::create("Render failed: " + failure, NotificationIcon::Error)->show();
@@ -344,8 +341,7 @@ void renderStop(bool mixAudio) {
     if (std::error_code songEc; mixAudio && cfg().renderAudio && !g_song.empty() && fs::exists(g_song, songEc)) {
         auto tmp = g_out; tmp.replace_extension(".mux.mp4");
         std::string failed;
-        auto res = ffmpeg::events::AudioMixer::mixVideoAudio(g_out, g_song, tmp);
-        if (res.isErr()) failed = res.unwrapErr();
+        failed = xyz::enc::mixVideoAudio(g_out, g_song, tmp);
         std::error_code ec;
         if (failed.empty()) { fs::remove(g_out, ec); fs::rename(tmp, g_out, ec); }
         else { fs::remove(tmp, ec); Notification::create("Rendered without audio: " + failed, NotificationIcon::Warning)->show(); }
@@ -371,6 +367,21 @@ void renderCapture() {
     if (ov) ov->setVisible(false);
     labels::captureHide(true);
     g_rt->beginWithClear(0, 0, 0, 1);
+    {
+        // CCRenderTexture::begin keeps the game at screen-pixel size in the corner of the texture.
+        // Draw the whole scene into the texture instead, scaled to fit and centered (black bars if the shape differs).
+        auto ws = CCDirector::get()->getWinSize();
+        float fit = std::min((float)g_w / ws.width, (float)g_h / ws.height);
+        int vw = std::max(2, (int)std::lround(ws.width * fit)), vh = std::max(2, (int)std::lround(ws.height * fit));
+        glViewport((g_w - vw) / 2, (g_h - vh) / 2, vw, vh);
+        kmGLMatrixMode(KM_GL_PROJECTION);
+        kmGLLoadIdentity();
+        kmMat4 proj;
+        kmMat4OrthographicProjection(&proj, 0.f, ws.width, 0.f, ws.height, -1024.f, 1024.f);
+        kmGLMultMatrix(&proj);
+        kmGLMatrixMode(KM_GL_MODELVIEW);
+        kmGLLoadIdentity();
+    }
     scene->visit();
 #ifdef GEODE_IS_WINDOWS
     if (g_pboOk) readIntoRing(); else readDirect();

@@ -76,7 +76,7 @@ struct Hist { int32_t a[4][2] = {}; };
 int32_t predict(Hist const& h, int c) { return (int32_t)((uint32_t)h.a[c][0] * 2u - (uint32_t)h.a[c][1]); }
 void push(Hist& h, int c, int32_t v) { h.a[c][1] = h.a[c][0]; h.a[c][0] = v; }
 
-// Anchor Fixes: values are integers on a fixed grid, predicted by straight-line extrapolation over ticks.
+// Old anchor macros: values are integers on a fixed grid, predicted by straight-line extrapolation over ticks.
 // Integer maths only, so every platform decodes exactly the same numbers.
 struct AHist { int64_t q[2] = {0, 0}; int64_t t[2] = {0, 0}; int n = 0; };
 int64_t aPredict(AHist const& h, int64_t t) {
@@ -99,12 +99,24 @@ bool anchorable(Macro const& m) {
     return true;
 }
 
-Buf encode(Macro const& m, bool anc, bool tc) {
+// Delta Accuracy: input state is implied when every button strictly alternates press / release
+bool alternates(Macro const& m) {
+    bool held[6] = {};
+    for (auto& i : m.inputs) {
+        int k = ((i.button - 1) % 3) * 2 + (i.p2 ? 1 : 0);
+        if (i.down == held[k]) return false;
+        held[k] = i.down;
+    }
+    return true;
+}
+
+Buf encode(Macro const& m, bool anc, bool tc, bool dl) {
     Buf b;
     putV(b, m.tps); putV(b, m.ticks); putV(b, m.seed); putV(b, zz(m.levelId));
     putV(b, (uint32_t)bitsOf(m.startX));
-    if (anc || tc) {
-        putV(b, (anc ? 1u : 0u) | (tc ? 2u : 0u));
+    bool ex = dl && !alternates(m);
+    if (anc || tc || dl) {
+        putV(b, (anc ? 1u : 0u) | (tc ? 2u : 0u) | (dl ? 4u : 0u) | (ex ? 8u : 0u));
         if (anc) putV(b, m.anchor);
         if (tc) {
             putV(b, m.tpsChanges.size());
@@ -114,8 +126,18 @@ Buf encode(Macro const& m, bool anc, bool tc) {
     }
     putV(b, m.inputs.size()); putV(b, m.fixes.size());
     uint32_t last = 0;
-    for (auto& i : m.inputs) { putV(b, i.tick - last); last = i.tick; }
-    for (auto& i : m.inputs) b.push_back((uint8_t)(((i.button - 1) & 3) | (i.down << 2) | (i.p2 << 3)));
+    if (dl) {
+        // one varint per input: zigzag(time since the previous input in 1/16 ticks) next to button, player and (only if needed) press/release
+        int64_t prev = 0; int sh = ex ? 4 : 3;
+        for (auto& i : m.inputs) {
+            int64_t q = (int64_t)i.tick * 16 + i.sub;
+            uint64_t st = (uint64_t)(((i.button - 1) % 3) | (i.p2 << 2)) | (ex ? (uint64_t)i.down << 3 : 0u);
+            putV(b, (zz(q - prev) << sh) | st); prev = q;
+        }
+    } else {
+        for (auto& i : m.inputs) { putV(b, i.tick - last); last = i.tick; }
+        for (auto& i : m.inputs) b.push_back((uint8_t)(((i.button - 1) & 3) | (i.down << 2) | (i.p2 << 3)));
+    }
     last = 0;
     for (auto& f : m.fixes) { putV(b, ((uint64_t)(f.tick - last) << 1) | f.p2); last = f.tick; }
     if (anc) {
@@ -143,7 +165,7 @@ Buf encode(Macro const& m, bool anc, bool tc) {
 }
 
 bool decode(Buf const& raw, Macro& m, int ver) {
-    bool v3 = ver >= 3, anc = false;
+    bool v3 = ver >= 3, anc = false, dl = false, ex = false;
     Rd r{raw.data(), raw.data() + raw.size()};
     m = Macro{};
     m.tps = (uint32_t)r.v(); m.ticks = (uint32_t)r.v(); m.seed = r.v(); m.levelId = unzz(r.v());
@@ -151,6 +173,7 @@ bool decode(Buf const& raw, Macro& m, int ver) {
     if (ver == 4) { m.anchor = (uint32_t)r.v(); anc = m.anchor > 0; }
     if (ver >= 5) {
         uint64_t fl = r.v();
+        dl = fl & 4; ex = fl & 8; m.delta = dl;
         if (fl & 1) { m.anchor = (uint32_t)r.v(); anc = m.anchor > 0; }
         if (fl & 2) {
             uint64_t n = r.v();
@@ -164,8 +187,24 @@ bool decode(Buf const& raw, Macro& m, int ver) {
     if (!r.ok || ni > raw.size() || nf > raw.size()) return false;
     m.inputs.resize(ni); m.fixes.resize(nf);
     uint32_t last = 0;
-    for (auto& i : m.inputs) { last += (uint32_t)r.v(); i.tick = last; }
-    for (auto& i : m.inputs) { uint8_t c = r.b(); i.button = (c & 3) + 1; i.down = c & 4; i.p2 = c & 8; }
+    if (dl) {
+        int64_t prev = 0; int sh = ex ? 4 : 3; bool held[6] = {};
+        for (auto& i : m.inputs) {
+            uint64_t v = r.v();
+            uint64_t st = v & ((1u << sh) - 1);
+            prev += unzz(v >> sh);
+            int64_t t = (prev + 8) >> 4;
+            i.tick = (uint32_t)std::max<int64_t>(t, 0); i.sub = (int8_t)(prev - t * 16);
+            i.button = (st & 3) + 1; i.p2 = (st >> 2) & 1;
+            int k = (i.button - 1) * 2 + (i.p2 ? 1 : 0);
+            i.down = ex ? ((st >> 3) & 1) : !held[k];
+            held[k] = i.down;
+            if (i.button > 3) return false;
+        }
+    } else {
+        for (auto& i : m.inputs) { last += (uint32_t)r.v(); i.tick = last; }
+        for (auto& i : m.inputs) { uint8_t c = r.b(); i.button = (c & 3) + 1; i.down = c & 4; i.p2 = c & 8; }
+    }
     last = 0;
     for (auto& f : m.fixes) { uint64_t v = r.v(); last += (uint32_t)(v >> 1); f.tick = last; f.p2 = v & 1; }
     if (anc) {
@@ -209,14 +248,14 @@ bool loadLegacy(std::ifstream& f, Macro& m) {
 }
 
 bool saveMacro(Macro const& m, std::string const& name) {
-    bool anc = anchorable(m), tc = !m.tpsChanges.empty();
-    Buf raw = encode(m, anc, tc);
+    bool anc = anchorable(m), tc = !m.tpsChanges.empty(), dl = m.delta;
+    Buf raw = encode(m, anc, tc, dl);
     Buf packed = lz(raw);
     Buf out = {
         static_cast<unsigned char>('X'),
         static_cast<unsigned char>('Y'),
         static_cast<unsigned char>('Z'),
-        static_cast<unsigned char>((anc || tc) ? '5' : '3')
+        static_cast<unsigned char>(dl ? '6' : (anc || tc) ? '5' : '3')
     };
     putV(out, raw.size());
     out.insert(out.end(), packed.begin(), packed.end());
@@ -231,7 +270,7 @@ bool loadMacro(Macro& m, std::string const& name) {
     char magic[4];
     if (!f || !f.read(magic, 4)) return false;
     if (std::memcmp(magic, "XYZM", 4) == 0) return loadLegacy(f, m);
-    int ver = std::memcmp(magic, "XYZ5", 4) == 0 ? 5 : std::memcmp(magic, "XYZ4", 4) == 0 ? 4 : std::memcmp(magic, "XYZ3", 4) == 0 ? 3 : std::memcmp(magic, "XYZ2", 4) == 0 ? 2 : 0;
+    int ver = std::memcmp(magic, "XYZ6", 4) == 0 ? 6 : std::memcmp(magic, "XYZ5", 4) == 0 ? 5 : std::memcmp(magic, "XYZ4", 4) == 0 ? 4 : std::memcmp(magic, "XYZ3", 4) == 0 ? 3 : std::memcmp(magic, "XYZ2", 4) == 0 ? 2 : 0;
     if (ver == 0) return false;
     Buf rest((std::istreambuf_iterator<char>(f)), {});
     Rd r{rest.data(), rest.data() + rest.size()};

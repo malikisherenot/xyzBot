@@ -6,7 +6,7 @@
     "mac": "2.2081",
     "ios": "2.2081"
   },
-  "version": "v1.19.0",
+  "version": "v2.0.0",
   "id": "itzmalikhere.xyzbot",
   "name": "xyzBot",
   "developer": "itzmalikhere",
@@ -19,9 +19,13 @@
   ],
   "resources": {
     "fonts": {
-      "paper-italic": {
-        "path": "resources/paper-italic.ttf",
-        "size": 40
+      "roboto-semibold": {
+        "path": "resources/Roboto-SemiBold.ttf",
+        "size": 65
+      },
+      "roboto-regular": {
+        "path": "resources/Roboto-Regular.ttf",
+        "size": 45
       }
     }
   },
@@ -31,15 +35,6 @@
       "name": "Floating Button",
       "default": true,
       "description": "Show a draggable button that opens the xyzBot menu. The menu can also be opened with F6."
-    }
-  },
-  "dependencies": {
-    "eclipse.ffmpeg-api": {
-      "version": ">=v2.0.0",
-      "importance": "suggested",
-      "platforms": [
-        "android"
-      ]
     }
   }
 }

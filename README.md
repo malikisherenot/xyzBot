@@ -2,24 +2,24 @@
   <img src="logo.png" alt="xyzBot logo" width="160">
 </p>
 
-# xyzBot
+# xyzBot v2.0.0
 
 A macro bot for [Geometry Dash](https://store.steampowered.com/app/322170/Geometry_Dash/) 2.2081, built with [Geode](https://geode-sdk.org). Your average macrobot but with all your needs :3
 
 ## Disclaimer
 
-xyzBot is made for showcase purposes, it is not made for illegitimate completions ;/
+xyzBot is made for showcase purposes, it is not made for illegitimate completions.
 
 ## Features
 
 **Recording and playback**
 - Accurate recording and playback with a macro library, search, merge, a macro editor and autosave
-Four accuracy modes:
+Three accuracy modes:
 
 - **Vanilla**
 - **Input Fixes**
 - **Frame Fixes**
-- **Anchor Fixes**
+- **Delta Fixes**
 - a LOT of assist tools <3
 
 **Visuals**
