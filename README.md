@@ -4,10 +4,7 @@
 
 # xyzBot v2.0.0
 
-[![License: GPL 3.0](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Geode](https://img.shields.io/badge/Geode-v5.11.2-blue)](https://geode-sdk.org/)
-[![Discord](https://img.shields.io/discord/1234567890?color=7289da&label=Discord&logo=discord&logoColor=white)](https://discord.gg/GE9xbJQU8)
-(I'm aware that it says it's invalid? 😭)
+[![Geode](https://img.shields.io/badge/Geode-v5.11.2-blue)](https://geode-sdk/)
 
 A macro bot for [Geometry Dash](https://store.steampowered.com/app/322170/Geometry_Dash/) 2.2081, built with [Geode](https://geode-sdk.org). Your average macrobot but with all your needs :3
 
