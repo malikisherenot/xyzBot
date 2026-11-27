@@ -16,6 +16,7 @@
 
 #if XYZ_LIBAV
 #include "Encoder.hpp"
+#include "../clickbot/Clickbot.hpp"
 #define XYZ_FFMPEG 1
 #endif
 
@@ -225,6 +226,7 @@ bool renderAvailable() {
 }
 
 bool isRendering() { return g_on; }
+long long renderFrameCount() { return g_frames; }
 float renderFps() { return g_on ? (float)g_fps : 0.f; }
 RenderStats renderStats() {
     RenderStats s;
@@ -298,6 +300,7 @@ std::string startRender() {
     }
 
     g_frames = 0; g_tail = -1;
+    clickbot::renderBegin();
     g_t0 = std::chrono::steady_clock::now();
     g_on = true;
     g_vsyncWas = GameManager::get()->getGameVariable("0030");
@@ -338,10 +341,13 @@ void renderStop(bool mixAudio) {
         Notification::create("Render stopped: no frames were captured", NotificationIcon::Error)->show();
         return;
     }
-    if (std::error_code songEc; mixAudio && cfg().renderAudio && !g_song.empty() && fs::exists(g_song, songEc)) {
+    std::error_code songEc;
+    bool haveSong = mixAudio && cfg().renderAudio && !g_song.empty() && fs::exists(g_song, songEc);
+    std::vector<float> clickTrack = mixAudio ? clickbot::renderTrack((double)g_frames / std::max(1, g_fps)) : std::vector<float>();
+    if (haveSong || !clickTrack.empty()) {
         auto tmp = g_out; tmp.replace_extension(".mux.mp4");
         std::string failed;
-        failed = xyz::enc::mixVideoAudio(g_out, g_song, tmp);
+        failed = xyz::enc::mixVideoAudio(g_out, haveSong ? g_song : fs::path(), tmp, clickTrack.empty() ? nullptr : &clickTrack);
         std::error_code ec;
         if (failed.empty()) { fs::remove(g_out, ec); fs::rename(tmp, g_out, ec); }
         else { fs::remove(tmp, ec); Notification::create("Rendered without audio: " + failed, NotificationIcon::Warning)->show(); }

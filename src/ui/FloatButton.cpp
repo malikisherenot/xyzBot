@@ -47,14 +47,24 @@ public:
         m_lastFont = xyz::menuFontNow();
 
         this->redraw();
-        m_halo->runAction(CCRepeatForever::create(CCSequence::create(
-            CCEaseSineInOut::create(CCScaleTo::create(1.4f, 1.12f)),
-            CCEaseSineInOut::create(CCScaleTo::create(1.4f, 0.96f)), nullptr)));
+        this->syncPulse();
 
         this->setTouchEnabled(true);
         this->place(false);
         this->schedule(schedule_selector(XyzFloatButton::tick), 0.1f);
         return true;
+    }
+
+    void syncPulse() {
+        if (xyz::cfg().animations) {
+            if (m_halo->numberOfRunningActions()) return;
+            m_halo->runAction(CCRepeatForever::create(CCSequence::create(
+                CCEaseSineInOut::create(CCScaleTo::create(2.2f, 1.05f)),
+                CCEaseSineInOut::create(CCScaleTo::create(2.2f, 0.98f)), nullptr)));
+        } else if (m_halo->numberOfRunningActions()) {
+            m_halo->stopAllActions();
+            m_halo->setScale(1.f);
+        }
     }
 
     void redraw() {
@@ -84,7 +94,7 @@ public:
     void place(bool animate) {
         auto s = CCDirector::get()->getWinSize();
         auto p = clampPos({m_fx * s.width, m_fy * s.height});
-        if (animate) this->runAction(CCEaseBackOut::create(CCMoveTo::create(0.25f, p)));
+        if (animate && xyz::cfg().animations) this->runAction(CCEaseSineOut::create(CCMoveTo::create(0.14f, p)));
         else this->setPosition(p);
     }
 
@@ -106,8 +116,10 @@ public:
         if (target != m_target && !m_down) {
             m_target = target;
             m_body->stopAllActions();
-            m_body->runAction(CCEaseBackOut::create(CCScaleTo::create(0.25f, m_target)));
+            if (c.animations) m_body->runAction(CCEaseSineOut::create(CCScaleTo::create(0.14f, m_target)));
+            else m_body->setScale(m_target);
         }
+        this->syncPulse();
         if (!m_down && !m_moved) {
             auto s = CCDirector::get()->getWinSize();
             auto p = clampPos({m_fx * s.width, m_fy * s.height});
@@ -124,7 +136,8 @@ public:
         m_start = t->getLocation(); m_moved = false; m_down = true;
         this->stopAllActions();
         m_body->stopAllActions();
-        m_body->runAction(CCEaseSineOut::create(CCScaleTo::create(0.08f, m_target * 0.85f)));
+        if (xyz::cfg().animations) m_body->runAction(CCEaseSineOut::create(CCScaleTo::create(0.06f, m_target * 0.94f)));
+        else m_body->setScale(m_target * 0.94f);
         return true;
     }
 
@@ -136,7 +149,8 @@ public:
     void release() {
         m_down = false;
         m_body->stopAllActions();
-        m_body->runAction(CCEaseBackOut::create(CCScaleTo::create(0.28f, m_target)));
+        if (xyz::cfg().animations) m_body->runAction(CCEaseSineOut::create(CCScaleTo::create(0.14f, m_target)));
+        else m_body->setScale(m_target);
     }
 
     void ccTouchEnded(CCTouch*, CCEvent*) override {

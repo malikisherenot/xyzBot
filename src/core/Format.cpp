@@ -247,6 +247,9 @@ bool loadLegacy(std::ifstream& f, Macro& m) {
 }
 }
 
+static std::string s_saveErr;
+std::string const& saveError() { return s_saveErr; }
+
 bool saveMacro(Macro const& m, std::string const& name) {
     bool anc = anchorable(m), tc = !m.tpsChanges.empty(), dl = m.delta;
     Buf raw = encode(m, anc, tc, dl);
@@ -259,10 +262,28 @@ bool saveMacro(Macro const& m, std::string const& name) {
     };
     putV(out, raw.size());
     out.insert(out.end(), packed.begin(), packed.end());
-    std::ofstream f(macroDir() / (name + ".xyz"), std::ios::binary);
-    if (!f) return false;
-    f.write(reinterpret_cast<char const*>(out.data()), (std::streamsize)out.size());
-    return (bool)f;
+    std::error_code ec;
+    auto dir = macroDir();
+    std::filesystem::create_directories(dir, ec);
+    auto dst = dir / (name + ".xyz"), tmp = dir / (name + ".xyz.tmp");
+    {
+        std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
+        if (!f) { s_saveErr = "cannot write to " + utils::string::pathToString(dir); return false; }
+        f.write(reinterpret_cast<char const*>(out.data()), (std::streamsize)out.size());
+        f.flush();
+        if (!f) { s_saveErr = "disk write failed"; std::filesystem::remove(tmp, ec); return false; }
+    }
+    std::filesystem::rename(tmp, dst, ec);
+    if (ec) {
+        // some Android file systems refuse to replace an existing file by renaming
+        ec.clear();
+        std::filesystem::remove(dst, ec);
+        ec.clear();
+        std::filesystem::rename(tmp, dst, ec);
+        if (ec) { s_saveErr = ec.message(); std::filesystem::remove(tmp, ec); return false; }
+    }
+    s_saveErr.clear();
+    return true;
 }
 
 bool loadMacro(Macro& m, std::string const& name) {

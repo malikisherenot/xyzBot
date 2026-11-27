@@ -169,14 +169,25 @@ class $modify(XyzTpsGL, GJBaseGameLayer) {
     }
 };
 
+// Gameplay Only: the speedhack runs only while a level is being played, not in the pause menu, the xyzBot menu or any other screen
+static bool speedNow() {
+    auto& c = xyz::cfg();
+    if (!c.speed) return false;
+    if (!c.speedGameplay) return true;
+    if (!xyz::activeLayer() || xyz::rt().menuOpen) return false;
+    auto pl = PlayLayer::get();
+    return !(pl && pl->m_isPaused);
+}
+
 class $modify(XyzSched, CCScheduler) {
     void update(float dt) {
         auto& c = xyz::cfg();
         float rf = xyz::renderFps();
         if (rf > 0.f) dt = 1.f / rf;
-        CCScheduler::update(rf > 0.f ? dt : (c.speed ? dt * c.speedVal : dt));
+        bool sp = speedNow();
+        CCScheduler::update(rf > 0.f ? dt : (sp ? dt * c.speedVal : dt));
         static float lastPitch = 1.f;
-        float want = (c.speed && c.speedAudio) ? c.speedVal : 1.f;
+        float want = (sp && c.speedAudio) ? c.speedVal : 1.f;
         if (c.ssbFix && xyz::rt().ssbActive && xyz::activeLayer()) {
             float f = std::clamp(xyz::rt().ssbLast, 0.25f, 4.f);
             want *= c.ssbInvert ? 1.f / f : f;

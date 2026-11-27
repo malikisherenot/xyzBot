@@ -3,6 +3,7 @@
 #include <Geode/Geode.hpp>
 #include <deque>
 #include <mutex>
+#include <functional>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -197,6 +198,54 @@ std::vector<std::string> availableCodecs() {
     return v;
 }
 
+std::string decodeAudio(fs::path const& file, std::vector<float>& stereo) {
+    setup();
+    stereo.clear();
+    AVFormatContext* f = nullptr;
+    AVCodecContext* d = nullptr;
+    SwrContext* swr = nullptr;
+    AVFrame* fr = av_frame_alloc();
+    AVPacket* pk = av_packet_alloc();
+    auto cleanup = [&] { av_frame_free(&fr); av_packet_free(&pk); avcodec_free_context(&d); swr_free(&swr); avformat_close_input(&f); };
+    struct G { std::function<void()> fn; ~G() { fn(); } } guard{cleanup};
+    auto path = path8(file);
+    AVCHK(avformat_open_input(&f, path.c_str(), nullptr, nullptr), "open audio");
+    AVCHK(avformat_find_stream_info(f, nullptr), "read audio");
+    int ai = av_find_best_stream(f, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (ai < 0) return "no audio stream";
+    auto dec = avcodec_find_decoder(f->streams[ai]->codecpar->codec_id);
+    if (!dec) return "audio format is not built in";
+    d = avcodec_alloc_context3(dec);
+    AVCHK(avcodec_parameters_to_context(d, f->streams[ai]->codecpar), "audio parameters");
+    AVCHK(avcodec_open2(d, dec, nullptr), "open decoder");
+    AVChannelLayout out;
+    av_channel_layout_default(&out, 2);
+    AVChannelLayout in = d->ch_layout;
+    if (in.nb_channels == 0) av_channel_layout_default(&in, 2);
+    AVCHK(swr_alloc_set_opts2(&swr, &out, AV_SAMPLE_FMT_FLT, 44100, &in, d->sample_fmt, d->sample_rate, 0, nullptr), "resampler");
+    AVCHK(swr_init(swr), "resampler");
+    const size_t cap = 44100u * 30u * 2u; // 30 seconds are plenty for a click
+    auto convert = [&](AVFrame* src) {
+        int maxOut = swr_get_out_samples(swr, src ? src->nb_samples : 0);
+        if (maxOut <= 0) return;
+        std::vector<float> tmp((size_t)maxOut * 2);
+        uint8_t* o = (uint8_t*)tmp.data();
+        int n = swr_convert(swr, &o, maxOut, src ? (uint8_t const**)src->extended_data : nullptr, src ? src->nb_samples : 0);
+        if (n > 0 && stereo.size() < cap) stereo.insert(stereo.end(), tmp.begin(), tmp.begin() + (size_t)n * 2);
+    };
+    auto drain = [&]() {
+        while (avcodec_receive_frame(d, fr) >= 0) { convert(fr); av_frame_unref(fr); }
+    };
+    while (av_read_frame(f, pk) >= 0) {
+        if (pk->stream_index == ai && avcodec_send_packet(d, pk) >= 0) drain();
+        av_packet_unref(pk);
+    }
+    avcodec_send_packet(d, nullptr);
+    drain();
+    convert(nullptr);
+    return stereo.empty() ? "no audio data" : std::string();
+}
+
 // ---- audio: decode the song, resample to 44.1 kHz stereo, encode AAC, merge with the copied video packets
 
 namespace {
@@ -225,26 +274,32 @@ struct Mixer {
 constexpr int RATE = 44100;
 }
 
-std::string mixVideoAudio(fs::path const& video, fs::path const& audio, fs::path const& out) {
+std::string mixVideoAudio(fs::path const& video, fs::path const& audio, fs::path const& out, std::vector<float> const* clicks) {
     setup();
     Mixer x;
+    bool haveSong = !audio.empty(), haveClicks = clicks && !clicks->empty();
+    if (!haveSong && !haveClicks) return "Nothing to mix";
     auto vfile = path8(video), afile = path8(audio), ofile = path8(out);
     AVCHK(avformat_open_input(&x.vf, vfile.c_str(), nullptr, nullptr), "open video");
     AVCHK(avformat_find_stream_info(x.vf, nullptr), "read video");
-    AVCHK(avformat_open_input(&x.af, afile.c_str(), nullptr, nullptr), "open audio");
-    AVCHK(avformat_find_stream_info(x.af, nullptr), "read audio");
     int vi = av_find_best_stream(x.vf, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
-    int ai = av_find_best_stream(x.af, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    int ai = -1;
+    if (haveSong) {
+        AVCHK(avformat_open_input(&x.af, afile.c_str(), nullptr, nullptr), "open audio");
+        AVCHK(avformat_find_stream_info(x.af, nullptr), "read audio");
+        ai = av_find_best_stream(x.af, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+        if (ai < 0) return "The song has no audio stream";
+    }
     if (vi < 0) return "The video has no video stream";
-    if (ai < 0) return "The song has no audio stream";
     AVStream* vin = x.vf->streams[vi];
-    AVStream* ain = x.af->streams[ai];
 
-    auto dec = avcodec_find_decoder(ain->codecpar->codec_id);
-    if (!dec) return "Song format is not built in";
-    x.ad = avcodec_alloc_context3(dec);
-    AVCHK(avcodec_parameters_to_context(x.ad, ain->codecpar), "audio parameters");
-    AVCHK(avcodec_open2(x.ad, dec, nullptr), "open audio decoder");
+    if (haveSong) {
+        auto dec = avcodec_find_decoder(x.af->streams[ai]->codecpar->codec_id);
+        if (!dec) return "Song format is not built in";
+        x.ad = avcodec_alloc_context3(dec);
+        AVCHK(avcodec_parameters_to_context(x.ad, x.af->streams[ai]->codecpar), "audio parameters");
+        AVCHK(avcodec_open2(x.ad, dec, nullptr), "open audio decoder");
+    }
 
     auto aenc = avcodec_find_encoder(AV_CODEC_ID_AAC);
     if (!aenc) return "AAC encoder is not built in";
@@ -269,10 +324,12 @@ std::string mixVideoAudio(fs::path const& video, fs::path const& audio, fs::path
     AVCHK(avcodec_parameters_from_context(as->codecpar, x.ae), "AAC parameters");
     as->time_base = x.ae->time_base;
 
-    AVChannelLayout inLayout = x.ad->ch_layout;
-    if (inLayout.nb_channels == 0) av_channel_layout_default(&inLayout, 2);
-    AVCHK(swr_alloc_set_opts2(&x.swr, &x.ae->ch_layout, AV_SAMPLE_FMT_FLTP, RATE, &inLayout, x.ad->sample_fmt, x.ad->sample_rate, 0, nullptr), "resampler");
-    AVCHK(swr_init(x.swr), "resampler");
+    if (haveSong) {
+        AVChannelLayout inLayout = x.ad->ch_layout;
+        if (inLayout.nb_channels == 0) av_channel_layout_default(&inLayout, 2);
+        AVCHK(swr_alloc_set_opts2(&x.swr, &x.ae->ch_layout, AV_SAMPLE_FMT_FLTP, RATE, &inLayout, x.ad->sample_fmt, x.ad->sample_rate, 0, nullptr), "resampler");
+        AVCHK(swr_init(x.swr), "resampler");
+    }
     x.fifo = av_audio_fifo_alloc(AV_SAMPLE_FMT_FLTP, 2, 1);
     x.fr = av_frame_alloc(); x.ef = av_frame_alloc(); x.pk = av_packet_alloc();
     if (!x.fifo || !x.fr || !x.ef || !x.pk) return "Out of memory";
@@ -305,6 +362,15 @@ std::string mixVideoAudio(fs::path const& video, fs::path const& audio, fs::path
         }
         return {};
     };
+    // adds the click track on top of planar float samples that start at sample position "at"
+    auto mixClicks = [&](float* l, float* r, int n, int64_t at) {
+        if (!haveClicks) return;
+        for (int i = 0; i < n; ++i) {
+            size_t idx = (size_t)(at + i) * 2;
+            if (idx + 1 >= clicks->size()) break;
+            l[i] += (*clicks)[idx]; r[i] += (*clicks)[idx + 1];
+        }
+    };
     auto resample = [&](AVFrame* f) -> std::string {
         int inN = f ? f->nb_samples : 0;
         int maxOut = swr_get_out_samples(x.swr, inN);
@@ -314,7 +380,7 @@ std::string mixVideoAudio(fs::path const& video, fs::path const& audio, fs::path
         int n = swr_convert(x.swr, buf, maxOut, f ? (uint8_t const**)f->extended_data : nullptr, inN);
         if (n > 0) {
             n = (int)std::min<int64_t>(n, limit - fed);
-            if (n > 0) { av_audio_fifo_write(x.fifo, (void**)buf, n); fed += n; }
+            if (n > 0) { mixClicks((float*)buf[0], (float*)buf[1], n, fed); av_audio_fifo_write(x.fifo, (void**)buf, n); fed += n; }
         }
         av_freep(&buf[0]); av_freep(&buf);
         return n < 0 ? "resample failed" : std::string();
@@ -330,7 +396,7 @@ std::string mixVideoAudio(fs::path const& video, fs::path const& audio, fs::path
             if (auto e2 = encodeFifo(false); !e2.empty()) return e2;
         }
     };
-    while (fed < limit && av_read_frame(x.af, x.pk) >= 0) {
+    while (haveSong && fed < limit && av_read_frame(x.af, x.pk) >= 0) {
         if (x.pk->stream_index == ai) {
             int r = avcodec_send_packet(x.ad, x.pk);
             av_packet_unref(x.pk);
@@ -338,9 +404,26 @@ std::string mixVideoAudio(fs::path const& video, fs::path const& audio, fs::path
             if (auto e = drainDecoder(); !e.empty()) return e;
         } else av_packet_unref(x.pk);
     }
-    avcodec_send_packet(x.ad, nullptr);
-    if (auto e = drainDecoder(); !e.empty()) return e;
-    if (auto e = resample(nullptr); !e.empty()) return e;
+    if (haveSong) {
+        avcodec_send_packet(x.ad, nullptr);
+        if (auto e = drainDecoder(); !e.empty()) return e;
+        if (auto e = resample(nullptr); !e.empty()) return e;
+    }
+    if (haveClicks) {
+        // the song is over (or there is none) but clicks may still come: continue with silence under them
+        int64_t target = std::min<int64_t>(limit, (int64_t)(clicks->size() / 2));
+        while (fed < target) {
+            int n = (int)std::min<int64_t>(4096, target - fed);
+            uint8_t** buf = nullptr; int ls = 0;
+            AVCHK(av_samples_alloc_array_and_samples(&buf, &ls, 2, n, AV_SAMPLE_FMT_FLTP, 0), "clicks");
+            av_samples_set_silence(buf, 0, n, 2, AV_SAMPLE_FMT_FLTP);
+            mixClicks((float*)buf[0], (float*)buf[1], n, fed);
+            av_audio_fifo_write(x.fifo, (void**)buf, n);
+            fed += n;
+            av_freep(&buf[0]); av_freep(&buf);
+            if (auto e = encodeFifo(false); !e.empty()) return e;
+        }
+    }
     if (auto e = encodeFifo(true); !e.empty()) return e;
     avcodec_send_frame(x.ae, nullptr);
     for (;;) {

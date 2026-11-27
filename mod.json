@@ -6,7 +6,7 @@
     "mac": "2.2081",
     "ios": "2.2081"
   },
-  "version": "v2.0.0",
+  "version": "v2.1.0",
   "id": "itzmalikhere.xyzbot",
   "name": "xyzBot",
   "developer": "itzmalikhere",
@@ -18,6 +18,9 @@
     "utility"
   ],
   "resources": {
+    "sprites": [
+      "resources/tab-*.png"
+    ],
     "fonts": {
       "roboto-semibold": {
         "path": "resources/Roboto-SemiBold.ttf",

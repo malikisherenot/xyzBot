@@ -19,7 +19,7 @@ COMMON=(
   --enable-encoder=mpeg4
   # audio: AAC encoder, decoders for the song formats Geometry Dash uses
   --enable-encoder=aac
-  --enable-decoder=mp3float,mp3,vorbis,flac,pcm_s16le,aac
+  --enable-decoder=mp3float,mp3,vorbis,flac,pcm_s16le,pcm_s24le,pcm_s32le,pcm_f32le,pcm_u8,aac
   --enable-muxer=mp4
   --enable-demuxer=mov,mp3,ogg,flac,wav,aac
   --enable-parser=mpegaudio,vorbis,flac,aac,mpeg4video,h264
@@ -38,8 +38,8 @@ case "$TARGET" in
     ;;
   windows)
     # MSVC toolchain (cl.exe in PATH, run from an MSYS2 shell): gives avcodec.lib etc. that link with the mod.
-    # -MD matches the dynamic runtime Geode mods use on Windows (/MD).
-    ./configure "${COMMON[@]}" --toolchain=msvc --target-os=win64 --arch=x86_64 --extra-cflags="-MD -O1"
+    # -MT matches Geode's static runtime, change it if your mod build uses another one.
+    ./configure "${COMMON[@]}" --toolchain=msvc --target-os=win64 --arch=x86_64 --extra-cflags="-MT -O1"
     ;;
   *) echo "unknown target"; exit 1 ;;
 esac

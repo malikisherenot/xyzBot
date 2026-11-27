@@ -1,4 +1,8 @@
 # Changelog ＼⁠(⁠^⁠o⁠^⁠)⁠／
+## v2.1.0
+- Added Clickbot
+- Added clickpack support
+- Added click sounds to rendered videos
 
 ## v2.0.0
 - Added Noclip Tint

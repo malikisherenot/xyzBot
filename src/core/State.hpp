@@ -12,6 +12,7 @@ enum class Mode : uint8_t { Off, Record, Play };
 
 // sub = offset from the tick in 1/16 ticks (-8..7), only set by Delta Accuracy recordings
 struct Input { uint32_t tick; uint8_t button; bool down; bool p2; int8_t sub = 0; };
+struct SplitIn { float f; uint8_t button; bool down, p1; int8_t sub; uint32_t tick; }; // input inside the current tick, f = how far into the step (0..1)
 struct PendIn { uint32_t due; int8_t sub; uint8_t button; bool down, p1; }; // Delta Accuracy: input waiting for its tick
 struct Fix { uint32_t tick; bool p2; float x, y, rot, yv; };
 struct TpsChange { uint32_t tick; uint32_t tps; }; // from this tick on, the macro runs at this TPS
@@ -39,7 +40,10 @@ struct Cfg {
     bool stepper = false;
     bool noclip = false;
     bool noclipTint = false;
+    bool velUnround = false; // GD no longer rounds the y velocity to 3 decimals
+    bool xExt = false;       // keeps the x position in a double so a very high TPS does not lose movement
     int accuracy = 2;
+    bool cbf = false; // click between steps: inputs keep their time inside a physics step and the step is split there
     bool lockDelta = false; // always use the fixed-step loop, even at 240 TPS
     bool fastSub = true, skipVis = false;
     bool ignoreLevel = false;
@@ -77,7 +81,7 @@ struct Cfg {
     bool renderAutoH = true, renderAudio = true;
     std::string renderMacro;
     bool autoName = true, noOverwrite = false;
-    bool autoSave = false; // off = ask for a name when a recording ends
+    bool autoSave = true; // off = ask for a name when a recording ends
     int renameFmt = 0;
     int recPlayers = 0, playPlayers = 0;
     bool swapInput = false, inverse[2] = {false, false};
@@ -102,7 +106,11 @@ struct Cfg {
     bool stepBar = true;
     int stepN = 10;
     int holdRate = 1;
-    int uiStyle = 0, fontGlass = 0, fontPaper = 1;
+    int uiStyle = 1, fontGlass = 0, fontPaper = 1;
+    bool animations = true;
+    bool speedGameplay = false;
+    int uiRev = 0;
+    float winX = -100000.f, winY = -100000.f, winW = 0.f, winH = 0.f; // Paper window rect, winX <= -50000 = centered
     int themeIdx = 0;
     int accR = 0, accG = 217, accB = 153;
     int tintR = 13, tintG = 20, tintB = 28;
@@ -142,6 +150,8 @@ struct Rt {
     float tint = 0.f; // Noclip Tint strength, fades out
     std::chrono::steady_clock::time_point frameT{};
     std::vector<PendIn> pend;
+    std::vector<SplitIn> split;
+    uint32_t flushTick = 0;
     bool flushing = false;
     int8_t flushSub = 0;
     bool savedTps = false;
@@ -156,6 +166,7 @@ struct Rt {
     float startX = 0.f;
     std::string levelName;
     std::string macroName, pendingTmp; // name typed in the menu, temp file of a finished recording that is not saved yet
+    bool menuOpen = false;
     bool edWasDead = false;
     float edLastX = 0.f;
     bool seekPending = false;
@@ -194,9 +205,12 @@ void onEditorPlaytest(bool started);
 float ssbFactor();
 void computeWant();
 void cpsPush(bool p2);
+void applySplitInput(GJBaseGameLayer* gl, SplitIn const& s);
 int cpsNow(int p);
 
 Cfg& cfg();
+// the accuracy that is really used: with CBF the fix modes are off and recording always uses the timed inputs
+inline int accEff() { auto& c = cfg(); return c.cbf ? 3 : c.accuracy; }
 inline int menuFontNow() { auto& c = cfg(); return c.uiStyle ? c.fontPaper : c.fontGlass; }
 Rt& rt();
 void loadCfg();
@@ -228,6 +242,8 @@ struct ProfFrame {
 std::filesystem::path persistDir(std::string const& sub); // geode-persistent/<this mod>/<sub>
 std::filesystem::path macroDir();
 std::vector<std::string> listMacros();
+std::vector<std::string> listMacrosRecent(); // newest first
+std::string const& saveError();
 bool saveMacro(Macro const& m, std::string const& name);
 bool loadMacro(Macro& m, std::string const& name);
 bool importMacro(Macro& m, std::filesystem::path const& file);

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(xyzBot VERSION 1.19.0)
+project(xyzBot VERSION 2.1.0)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -87,3 +87,14 @@ endif()
 
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 setup_geode_mod(${PROJECT_NAME})
+
+# Lua 5.4 for the scripting (src/core/lua), built from the official source as a small static library
+CPMAddPackage(NAME lua GITHUB_REPOSITORY lua/lua GIT_TAG v5.4.7 DOWNLOAD_ONLY YES)
+if(lua_ADDED)
+  file(GLOB XYZ_LUA_SRC "${lua_SOURCE_DIR}/*.c")
+  list(FILTER XYZ_LUA_SRC EXCLUDE REGEX "/(lua|luac|onelua|ltests)\\.c$")
+  add_library(xyz_lua STATIC ${XYZ_LUA_SRC})
+  set_target_properties(xyz_lua PROPERTIES C_STANDARD 99 POSITION_INDEPENDENT_CODE ON)
+  target_include_directories(xyz_lua PUBLIC "${lua_SOURCE_DIR}")
+  target_link_libraries(${PROJECT_NAME} xyz_lua)
+endif()

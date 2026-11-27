@@ -51,9 +51,9 @@ void profFrame(double loopUs, double gapUs) {
 void loadCfg() {
     auto& c = cfg(); auto m = Mod::get();
     { int a = m->getSavedValue<int>("accuracy", -1); c.accuracy = a >= 0 ? std::min(a, 3) : (m->getSavedValue<bool>("fixes", true) ? 2 : 0); }
-    LD(lockDelta, bool);
+    LD(lockDelta, bool); 
     LD(tps, bool); LD(tpsVal, double); LD(budgetMs, double); LD(speed, bool); LD(speedVal, double);
-    LD(noclip, bool); LD(noclipTint, bool); LD(trajAuto, bool); LD(profiler, bool); LD(trajLook, int); LD(fastSub, bool); LD(skipVis, bool); LD(ignoreLevel, bool); LD(hitboxes, bool);
+    LD(noclip, bool); LD(cbf, bool); LD(noclipTint, bool); LD(velUnround, bool); LD(xExt, bool); LD(trajAuto, bool); LD(profiler, bool); LD(trajLook, int); LD(fastSub, bool); LD(skipVis, bool); LD(ignoreLevel, bool); LD(hitboxes, bool);
     LD(hbPlayer, bool); LD(hbSolid, bool); LD(hbHazard, bool); LD(hbSpecial, bool); LD(hbRotated, bool);
     LD(logging, bool); LD(logPositions, bool); LD(logPosEvery, int); c.logPosEvery = std::clamp(c.logPosEvery, 1, 240);
     LD(trail, bool); LD(trailClear, bool); LD(trailLen, int); LD(traj, bool); LD(trajLen, int);
@@ -94,7 +94,10 @@ void loadCfg() {
     for (int i = 0; i < 3; ++i) {
         auto k = std::to_string(i);
         c.layoutBg[i] = m->getSavedValue<int>("layoutBg" + k, 160); c.layoutGr[i] = m->getSavedValue<int>("layoutGr" + k, 160);
-    } LD(stepBar, bool); LD(stepN, int); LD(holdRate, int); LD(uiStyle, int); LD(fontGlass, int); LD(fontPaper, int); LD(themeIdx, int); LD(accR, int); LD(accG, int); LD(accB, int); LD(tintR, int); LD(tintG, int); LD(tintB, int);
+    } LD(stepBar, bool); LD(stepN, int); LD(holdRate, int); LD(uiStyle, int); LD(animations, bool); LD(speedGameplay, bool); LD(uiRev, int); LD(fontGlass, int); LD(fontPaper, int); LD(themeIdx, int); LD(accR, int); LD(accG, int); LD(accB, int); LD(tintR, int); LD(tintG, int); LD(tintB, int);
+    c.winX = (float)m->getSavedValue<double>("winX", -100000.0); c.winY = (float)m->getSavedValue<double>("winY", -100000.0);
+    c.winW = (float)m->getSavedValue<double>("winW", 0.0); c.winH = (float)m->getSavedValue<double>("winH", 0.0);
+    if (c.uiRev < 2) { c.uiRev = 2; c.uiStyle = 1; c.autoSave = true; c.accR = 46; c.accG = 134; c.accB = 255; c.themeIdx = -1; m->setSavedValue<int>("uiRev", 2); m->setSavedValue<int>("uiStyle", 1); m->setSavedValue<bool>("autoSave", true); m->setSavedValue<int>("accR", 46); m->setSavedValue<int>("accG", 134); m->setSavedValue<int>("accB", 255); m->setSavedValue<int>("themeIdx", -1); }
     for (int i = 0; i < 2; ++i) {
         auto k = std::to_string(i);
         c.acOn[i] = m->getSavedValue<bool>("acOn" + k, false); c.acHold[i] = m->getSavedValue<int>("acHold" + k, 4);
@@ -105,7 +108,7 @@ void saveCfg() {
     auto& c = cfg(); auto m = Mod::get();
     SV(tps, bool); m->setSavedValue<double>("tpsVal", c.tpsVal); m->setSavedValue<double>("budgetMs", c.budgetMs);
     SV(speed, bool); m->setSavedValue<double>("speedVal", c.speedVal);
-    SV(noclip, bool); SV(noclipTint, bool); SV(accuracy, int); SV(lockDelta, bool); SV(trajAuto, bool); SV(profiler, bool); SV(trajLook, int); SV(fastSub, bool); SV(skipVis, bool); SV(ignoreLevel, bool); SV(hitboxes, bool);
+    SV(noclip, bool); SV(cbf, bool); SV(noclipTint, bool); SV(velUnround, bool); SV(xExt, bool); SV(accuracy, int); SV(lockDelta, bool); SV(trajAuto, bool); SV(profiler, bool); SV(trajLook, int); SV(fastSub, bool); SV(skipVis, bool); SV(ignoreLevel, bool); SV(hitboxes, bool);
     SV(hbPlayer, bool); SV(hbSolid, bool); SV(hbHazard, bool); SV(hbSpecial, bool); SV(hbRotated, bool);
     SV(logging, bool); SV(logPositions, bool); SV(logPosEvery, int);
     SV(trail, bool); SV(trailClear, bool); SV(trailLen, int); SV(traj, bool); SV(trajLen, int);
@@ -139,7 +142,8 @@ void saveCfg() {
     for (int i = 0; i < 3; ++i) {
         auto k = std::to_string(i);
         m->setSavedValue<int>("layoutBg" + k, c.layoutBg[i]); m->setSavedValue<int>("layoutGr" + k, c.layoutGr[i]);
-    } SV(stepBar, bool); SV(stepN, int); SV(holdRate, int); SV(uiStyle, int); SV(fontGlass, int); SV(fontPaper, int); SV(themeIdx, int); SV(accR, int); SV(accG, int); SV(accB, int); SV(tintR, int); SV(tintG, int); SV(tintB, int);
+    } SV(stepBar, bool); SV(stepN, int); SV(holdRate, int); SV(uiStyle, int); SV(animations, bool); SV(speedGameplay, bool); SV(uiRev, int); SV(fontGlass, int); SV(fontPaper, int); SV(themeIdx, int); SV(accR, int); SV(accG, int); SV(accB, int); SV(tintR, int); SV(tintG, int); SV(tintB, int);
+    m->setSavedValue<double>("winX", c.winX); m->setSavedValue<double>("winY", c.winY); m->setSavedValue<double>("winW", c.winW); m->setSavedValue<double>("winH", c.winH);
     for (int i = 0; i < 2; ++i) {
         auto k = std::to_string(i);
         m->setSavedValue<bool>("acOn" + k, c.acOn[i]); m->setSavedValue<int>("acHold" + k, c.acHold[i]);
@@ -178,6 +182,21 @@ std::vector<std::string> listMacros() {
     for (auto& e : std::filesystem::directory_iterator(macroDir(), ec))
         if (e.path().extension() == ".xyz") out.push_back(utils::string::pathToString(e.path().stem()));
     std::sort(out.begin(), out.end());
+    return out;
+}
+
+std::vector<std::string> listMacrosRecent() {
+    std::vector<std::pair<std::filesystem::file_time_type, std::string>> v;
+    std::error_code ec;
+    for (auto& e : std::filesystem::directory_iterator(macroDir(), ec)) {
+        if (e.path().extension() != ".xyz") continue;
+        std::error_code e2;
+        auto t = std::filesystem::last_write_time(e.path(), e2);
+        v.emplace_back(e2 ? std::filesystem::file_time_type::min() : t, utils::string::pathToString(e.path().stem()));
+    }
+    std::sort(v.begin(), v.end(), [](auto& a, auto& b) { return a.first != b.first ? a.first > b.first : a.second < b.second; });
+    std::vector<std::string> out;
+    for (auto& p : v) out.push_back(std::move(p.second));
     return out;
 }
 

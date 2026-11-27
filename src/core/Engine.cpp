@@ -13,6 +13,10 @@
 #include <Geode/binding/GameToolbox.hpp>
 #include <unordered_map>
 
+#include "lua/Lua.hpp"
+#include "../clickbot/Clickbot.hpp"
+#include "../discord/Discord.hpp"
+
 using namespace geode::prelude;
 
 namespace xyz {
@@ -217,8 +221,8 @@ static void rewind() {
     logger::event(fmt::format("attempt mode={} seed={} tps={} startX={:.9g}", r.mode == Mode::Record ? "record" : r.mode == Mode::Play ? "play" : "off", GameToolbox::getfast_srand(), curTps(), r.startX));
     if (r.mode == Mode::Record) {
         r.rec = Macro{};
-        r.pend.clear();
-        r.rec.delta = cfg().accuracy == 3;
+        r.pend.clear(); r.split.clear();
+        r.rec.delta = accEff() == 3;
         r.rec.tps = (uint32_t)curTps();
         r.rec.levelId = r.levelId;
         r.rec.startX = r.startX;
@@ -251,14 +255,25 @@ static void feed(GJBaseGameLayer* gl) {
             if (r.seekHeld[i] && covers(cfg().playPlayers, i >= 3)) { gl->handleButton(true, (int)(i % 3 + 1), i < 3); r.held[i] = true; }
         r.feeding = false;
     }
-    while (r.nextIn < m.inputs.size() && m.inputs[r.nextIn].tick <= r.tick) {
-        auto& i = m.inputs[r.nextIn++];
+    bool cbf = cfg().cbf;
+    while (r.nextIn < m.inputs.size()) {
+        auto& i = m.inputs[r.nextIn];
+        int64_t q = (int64_t)i.tick * 16 + i.sub;
+        // with CBF the input time is floored to its step, otherwise it keeps its nearest tick
+        int64_t step = cbf ? (q >> 4) : (int64_t)i.tick;
+        if (step > (int64_t)r.tick) break;
+        ++r.nextIn;
         if (!covers(cfg().playPlayers, i.p2)) continue;
+        if (cbf && step == (int64_t)r.tick && (q & 15) != 0) {
+            r.split.push_back({(float)(q & 15) / 16.f, i.button, i.down, !i.p2, (int8_t)(q & 15), r.tick});
+            continue;
+        }
         r.feeding = true;
         gl->handleButton(i.down, i.button, !i.p2);
         r.feeding = false;
         r.held[hi(i.button, i.p2)] = i.down;
         if (i.down && i.button == 1) cpsPush(i.p2);
+        clickbot::onInput(i.button, i.down, !i.p2, false);
     }
 }
 
@@ -278,7 +293,7 @@ static void closeTick(GJBaseGameLayer* pl) {
     logger::position(r.tick);
     if (cfg().profiler) r.prof.ticks++;
     if (r.mode == Mode::Play) {
-        bool useFix = cfg().accuracy > 0;
+        bool useFix = accEff() > 0 && !cfg().cbf;
         while (r.nextFix < r.play.fixes.size() && r.play.fixes[r.nextFix].tick <= r.tick) {
             if (useFix) applyFix(pl, r.play.fixes[r.nextFix]);
             r.nextFix++;
@@ -297,7 +312,7 @@ static void closeTick(GJBaseGameLayer* pl) {
             });
         }
     } else if (r.mode == Mode::Record) {
-        if (cfg().accuracy == 2) pushFixes(pl, r.tick);
+        if (accEff() == 2) pushFixes(pl, r.tick);
         r.tick++;
         r.rec.ticks = r.tick;
     } else {
@@ -312,6 +327,32 @@ static void closeTick(GJBaseGameLayer* pl) {
     if (cfg().trail) vis::sampleTrail(pl);
 }
 
+// presses or releases one input from inside a step (called by Cbf.cpp), recording it or playing it like the normal paths do
+void applySplitInput(GJBaseGameLayer* gl, SplitIn const& si) {
+    auto& r = rt();
+    if (r.mode == Mode::Record) {
+        r.flushing = true; r.flushSub = si.sub; r.flushTick = si.tick;
+        gl->handleButton(si.down, si.button, si.p1);
+        r.flushing = false; r.flushSub = 0;
+    } else {
+        r.feeding = true;
+        gl->handleButton(si.down, si.button, si.p1);
+        r.feeding = false;
+        r.held[hi(si.button, !si.p1)] = si.down;
+        if (si.down && si.button == 1) cpsPush(!si.p1);
+        clickbot::onInput(si.button, si.down, si.p1, false);
+    }
+}
+
+// inputs that were meant for the middle of a step but whose step never ran: press them now
+static void flushSplitLeftovers(GJBaseGameLayer* gl) {
+    auto& r = rt();
+    if (r.split.empty()) return;
+    auto left = std::move(r.split);
+    r.split.clear();
+    for (auto& si : left) applySplitInput(gl, si);
+}
+
 // Delta Accuracy recording: applies the inputs whose tick has come, in the order they were pressed
 static void flushPend(GJBaseGameLayer* gl) {
     auto& r = rt();
@@ -323,7 +364,13 @@ static void flushPend(GJBaseGameLayer* gl) {
     std::vector<PendIn> due(r.pend.begin(), r.pend.begin() + (std::ptrdiff_t)n);
     r.pend.erase(r.pend.begin(), r.pend.begin() + (std::ptrdiff_t)n);
     r.flushing = true;
+    r.flushTick = r.tick;
     for (auto& i : due) {
+        if (cfg().cbf && i.sub > 0 && i.due == r.tick) {
+            // CBF: applied in the middle of this step, see Cbf.cpp
+            r.split.push_back({(float)i.sub / 16.f, i.button, i.down, i.p1, i.sub, r.tick});
+            continue;
+        }
         r.flushSub = i.due == r.tick ? i.sub : (int8_t)0;
         gl->handleButton(i.down, i.button, i.p1);
     }
@@ -346,12 +393,13 @@ class $modify(XyzGL, GJBaseGameLayer) {
         auto& r = rt(); auto& c = cfg();
         if (!isActive(this) || r.simulating) { GJBaseGameLayer::handleButton(down, button, p1); return; }
         bool ext = !r.internal && !r.feeding && !r.resetting;
-        if (ext && !r.flushing && r.mode == Mode::Record && c.accuracy == 3 && button >= 1 && button <= 3) {
+        if (ext && !r.flushing) { lua::onInput(button, down, p1); clickbot::onInput(button, down, p1, true); }
+        if (ext && !r.flushing && r.mode == Mode::Record && accEff() == 3 && button >= 1 && button <= 3) {
             // Delta Accuracy: keep the real time of the input and apply it at the tick nearest to it
             double st = 1.0 / curTps();
             double since = std::min(0.25, std::chrono::duration<double>(std::chrono::steady_clock::now() - r.frameT).count());
             int64_t q = std::clamp<int64_t>((int64_t)std::llround((r.leftover + since) / st * 16.0), 0, 16 * 600);
-            int64_t k = (q + 8) >> 4;
+            int64_t k = c.cbf ? (q >> 4) : ((q + 8) >> 4); // CBF: the step the click fell into, the rest is sub (0..15)
             r.pend.push_back({r.tick + (uint32_t)k, (int8_t)(q - k * 16), (uint8_t)button, down, p1});
             return;
         }
@@ -367,9 +415,9 @@ class $modify(XyzGL, GJBaseGameLayer) {
             if (takeover() && r.mode != Mode::Play) return;
         }
         if (r.mode == Mode::Record && !r.resetting && button >= 1 && button <= 3 && covers(c.recPlayers, p2)) {
-            if (c.accuracy == 1 && r.tick > 0 && (r.rec.fixes.empty() || r.rec.fixes.back().tick < r.tick - 1)) pushFixes(this, r.tick - 1);
+            if (accEff() == 1 && r.tick > 0 && (r.rec.fixes.empty() || r.rec.fixes.back().tick < r.tick - 1)) pushFixes(this, r.tick - 1);
             r.held[hi(button, p2)] = down;
-            r.rec.inputs.push_back({r.tick, (uint8_t)button, down, p2, r.flushing ? r.flushSub : (int8_t)0});
+            r.rec.inputs.push_back({r.flushing ? r.flushTick : r.tick, (uint8_t)button, down, p2, r.flushing ? r.flushSub : (int8_t)0});
         }
         bool helper = ext && button == 1 && down && r.mode != Mode::Play;
         if (helper && wantsPreRelease(p1 ? m_player1 : m_player2)) press(this, false, p2);
@@ -388,8 +436,12 @@ class $modify(XyzGL, GJBaseGameLayer) {
         if (!half) {
             if (!PlayLayer::get()) editorRespawnCheck(this);
             if (rt().mode != Mode::Play) assistTick(this);
+            flushSplitLeftovers(this);
             flushPend(this);
             drive(this); feed(this);
+            lua::onTick(this);
+            clickbot::onTick();
+            discord::onTick();
         }
         XYZ_TIMED(P_PROC, GJBaseGameLayer::processCommands(dt, half, last));
         if (!half) closeTick(this);
@@ -418,6 +470,7 @@ class $modify(XyzPL, PlayLayer) {
         r.resetting = true; r.loadedCp = false;
         PlayLayer::resetLevel();
         r.resetting = false;
+        lua::onReset(m_attempts);
         if (cfg().trailClear) vis::trailClear();
         if (!r.loadedCp) rewind();
         if (!r.bsLoad) flipOnReset();
@@ -486,6 +539,7 @@ class $modify(XyzPL, PlayLayer) {
             return;
         }
         if (p && !p->m_isDead && o != m_anticheatSpike && noclipFor(p, this)) { r.tint = 1.f; return; }
+        lua::onDeath();
         PlayLayer::destroyPlayer(p, o);
         if (p) logger::event(fmt::format("death t={} p{} x={:.9g} y={:.9g}", r.tick, p->m_isSecondPlayer ? 2 : 1, p->getPositionX(), p->getPositionY()));
         if (p) r.flipPlayer = p->m_isSecondPlayer ? 2 : 1;
@@ -597,18 +651,28 @@ void stopAll(bool save) {
     logger::event(fmt::format("stop mode={} tick={} save={}", r.mode == Mode::Record ? "record" : "play", r.tick, save));
     if (r.mode == Mode::Play && isRendering()) renderNotifyEnd();
     if (r.mode == Mode::Record && save && !r.rec.inputs.empty()) {
-        auto name = macroFileName();
-        if (cfg().autoSave) {
-            if (cfg().noOverwrite) name = uniqueMacroName(name);
-            saveMacro(r.rec, name);
-        } else {
-            // kept as a temp file until Save is pressed in the menu (name it there)
-            auto tmp = name + " (unsaved)";
-            saveMacro(r.rec, tmp);
-            r.pendingTmp = tmp; r.macroName = name;
+        // a recording that still waits for its name is kept before the next one is written
+        if (!r.pendingTmp.empty()) {
+            std::error_code ec;
+            auto typed = r.macroName;
+            for (auto& ch : typed) if (std::strchr("\\/:*?\"<>|", ch)) ch = '_';
+            auto to = uniqueMacroName(typed.empty() ? macroFileName() : typed);
+            std::filesystem::rename(macroDir() / (r.pendingTmp + ".xyz"), macroDir() / (to + ".xyz"), ec);
+            r.pendingTmp.clear();
         }
+        auto name = macroFileName();
+        bool ok;
+        if (cfg().autoSave) {
+            name = uniqueMacroName(name);
+            ok = saveMacro(r.rec, name);
+        } else {
+            auto tmp = uniqueMacroName(name + " (unsaved)");
+            ok = saveMacro(r.rec, tmp);
+            if (ok) { r.pendingTmp = tmp; r.macroName = name; }
+        }
+        if (!ok) Notification::create("Could not save the macro: " + saveError(), NotificationIcon::Error)->show();
     }
-    r.pend.clear();
+    r.pend.clear(); r.split.clear();
     if (r.tpsOverridden) { cfg().tps = r.savedTps; cfg().tpsVal = r.prevTpsVal; r.tpsOverridden = false; }
     r.mode = Mode::Off;
     r.held.fill(false);

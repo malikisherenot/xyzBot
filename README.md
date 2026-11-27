@@ -2,9 +2,7 @@
   <img src="logo.png" alt="xyzBot logo" width="160">
 </p>
 
-# xyzBot v2.0.0
-
-[![Geode](https://img.shields.io/badge/Geode-v5.11.2-blue)](https://geode-sdk/)
+# xyzBot v2.1.0
 
 A macro bot for [Geometry Dash](https://store.steampowered.com/app/322170/Geometry_Dash/) 2.2081, built with [Geode](https://geode-sdk.org). Your average macrobot but with all your needs :3
 
@@ -31,6 +29,12 @@ Three accuracy modes:
 **Rendering**
 
 - Basic Video rendering
+- Click sounds in rendered videos
+
+**Clickbot**
+
+- Selectable clickpacks
+- Click sounds for macro and live inputs
 
 ## Controls
 
