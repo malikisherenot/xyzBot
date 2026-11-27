@@ -1,8 +1,10 @@
 # Changelog ＼⁠(⁠^⁠o⁠^⁠)⁠／
 ## v2.1.0
+- Linux Support 
+- Added small icons for each tab
+- Refined Paper UI
+- Added Lua scripting 
 - Added Clickbot
-- Added clickpack support
-- Added click sounds to rendered videos
 
 ## v2.0.0
 - Added Noclip Tint
